@@ -1,0 +1,33 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credentials*
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Python environments
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Backups
+tam-before-*/
+**/tam-before-*/
+*.bak
+
+# Logs
+*.log
+
+# IDE files
+.vscode/
+.idea/
+
+# Session secrets
+.session_secret
