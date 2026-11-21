@@ -1,0 +1,221 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1">
+<title>TAM Consent Register</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #f3f5f9;
+        color: #243858;
+        margin: 0;
+        padding: 24px;
+    }
+    main {
+        max-width: 1050px;
+        margin: auto;
+        background: white;
+        padding: 28px;
+        border-radius: 14px;
+    }
+    h1 { color: #243d6b; }
+    a { color: #243d6b; }
+    input {
+        padding: 12px;
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        margin: 16px 0;
+    }
+    .table-wrap { overflow-x: auto; }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    th, td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    th { background: #edf3fb; }
+    .accepted {
+        color: #16803c;
+        font-weight: bold;
+    }
+    .withdrawn {
+        color: #c62828;
+        font-weight: bold;
+    }
+    .summary {
+        background: #edf3fb;
+        padding: 14px;
+        border-radius: 8px;
+    }
+</style>
+</head>
+<body>
+<main>
+    <a href="/admin/dashboard">← Back to Admin Dashboard</a>
+
+    <h1>TAM — Consent Register</h1>
+
+<p>
+    <a href="/admin/consents/export"
+       style="
+           display:inline-block;
+           background:#243d6b;
+           color:white;
+           padding:12px 20px;
+           border-radius:7px;
+           text-decoration:none;
+           font-weight:bold;
+       ">
+        Download Consent Records (CSV)
+    </a>
+</p>
+
+    <p>Super Admin access only. Attendee consent records.</p>
+
+    <div class="summary" id="summary">
+        Loading consent records...
+    </div>
+
+    <label for="search">
+        <strong>Search records</strong>
+    </label>
+    <input id="search"
+           type="search"
+           placeholder="Search attendee name or consent type">
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Consent ID</th>
+                    <th>Attendee</th>
+                    <th>Consent Type</th>
+                    <th>Date &amp; Time</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="consentRows"></tbody>
+        </table>
+    </div>
+
+    <p id="message" role="status"></p>
+</main>
+
+<script>
+    const rowsElement =
+        document.getElementById("consentRows");
+
+    const summary =
+        document.getElementById("summary");
+
+    const message =
+        document.getElementById("message");
+
+    const search =
+        document.getElementById("search");
+
+    let records = [];
+
+    function displayDate(value) {
+        if (!value) return "—";
+
+        const date = new Date(value);
+
+        if (Number.isNaN(date.getTime())) {
+            return "Unknown";
+        }
+
+        return date.toLocaleString("en-CA", {
+            timeZone: "America/Toronto",
+            dateStyle: "medium",
+            timeStyle: "short"
+        });
+    }
+
+    function renderRecords() {
+        const term = search.value.trim().toLowerCase();
+
+        const filtered = records.filter(record => {
+            return (
+                record.attendee_name.toLowerCase().includes(term) ||
+                record.consent_type.toLowerCase().includes(term)
+            );
+        });
+
+        rowsElement.replaceChildren();
+
+        for (const record of filtered) {
+            const tr = document.createElement("tr");
+
+            const values = [
+                record.id,
+                record.attendee_name,
+                record.consent_type.replaceAll("_", " "),
+                displayDate(record.accepted_at)
+            ];
+
+            for (const value of values) {
+                const td = document.createElement("td");
+                td.textContent = value;
+                tr.appendChild(td);
+            }
+
+            const status = document.createElement("td");
+
+            if (record.status === "withdrawn") {
+                status.textContent = "Withdrawn";
+                status.className = "withdrawn";
+            } else {
+                status.textContent = "Accepted";
+                status.className = "accepted";
+            }
+
+            tr.appendChild(status);
+            rowsElement.appendChild(tr);
+        }
+
+        message.textContent =
+            `${filtered.length} record(s) displayed.`;
+    }
+
+    async function loadConsents() {
+        try {
+            const response = await fetch(
+                "/admin/api/consents",
+                {
+                    credentials: "same-origin",
+                    cache: "no-store"
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error("Unable to access consent records.");
+            }
+
+            const data = await response.json();
+            records = data.consents;
+
+            summary.textContent =
+                `${records.length} consent record(s) loaded. ` +
+                "The current API returns a maximum of 500 records.";
+
+            renderRecords();
+        } catch (error) {
+            summary.textContent = "Unable to load consent records.";
+            message.textContent = error.message;
+        }
+    }
+
+    search.addEventListener("input", renderRecords);
+    loadConsents();
+</script>
+</body>
+</html>

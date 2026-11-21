@@ -1,0 +1,197 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>TAM Organizer Dashboard</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f6f9;
+            margin: 0;
+            padding: 30px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+        }
+
+        h1 {
+            color: #263b68;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+            text-align: left;
+        }
+
+        th {
+            background-color: #263b68;
+            color: white;
+        }
+
+        .approved {
+            color: green;
+            font-weight: bold;
+        }
+
+        .pending {
+            color: #a66a00;
+            font-weight: bold;
+        }
+
+        .admin-navigation {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .admin-navigation a {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #273d6b;
+            color: white;
+            padding: 12px 16px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        .admin-navigation a:hover {
+            background-color: #37558e;
+        }
+
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>TAM Organizer Dashboard</h1>
+
+
+        
+        <div class="admin-navigation">
+
+            {% if admin_role == "super_admin" %}
+                <a href="/admin/organizers">
+                    Manage Organizers
+                </a>
+
+                <a href="/admin/events">
+                    Manage Events
+                </a>
+
+                <a href="/admin/aws">
+                    ☁️ AWS Management
+                </a>
+            {% endif %}
+
+            <a href="/admin/contributors/manage">
+                Manage Contributors
+            </a>
+            {% if admin_role == "super_admin" %}
+            <a href="/admin/consents"
+            style="
+                display:inline-block;
+                background:#243d6b;
+                color:white;
+                padding:14px 18px;
+                border-radius:6px;
+                text-decoration:none;
+                font-size:14px;
+                margin-right:6px;
+            ">
+                Consent Register
+            </a>
+            {% endif %}
+        </div>
+        <p>
+            Logged in as:
+            <strong>{{ admin_name }}</strong>
+            ({{ admin_role }})
+        </p>
+
+        <form action="/admin/logout" method="post" style="text-align: right;">
+            <button type="submit" style="
+                background-color: #c0392b;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 14px;
+            ">
+                Logout
+            </button>
+        </form>
+
+        <h3>Event: TAM Diwali 2026</h3>
+
+        <p>
+            Welcome to the Smart Event
+            Photo Sharing administration panel.
+        </p>
+
+        <h2>Registered Contributors</h2>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Mobile</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                <tr>
+                    <td>1</td>
+                    <td>Swarna</td>
+                    <td>Not provided</td>
+                    <td class="approved">Approved</td>
+                </tr>
+
+                <tr>
+                    <td>2</td>
+                    <td>Ramesh</td>
+                    <td>Not provided</td>
+                    <td class="approved">Approved</td>
+                </tr>
+
+                <tr>
+                    <td>3</td>
+                    <td>Test Contributor</td>
+                    <td>****0123</td>
+                    <td class="approved">Approved</td>
+                </tr>
+
+                <tr>
+                    <td>4</td>
+                    <td>Test Guest 2</td>
+                    <td>****0124</td>
+                    <td class="approved">Approved</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

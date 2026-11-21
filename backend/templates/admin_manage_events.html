@@ -1,0 +1,134 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>TAM Event Management</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f2f4f8;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 850px;
+            margin: 40px auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+        }
+
+        h1, h2 {
+            color: #273d6b;
+        }
+
+        .back {
+            display: inline-block;
+            background: #273d6b;
+            color: white;
+            padding: 12px 18px;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+
+        label {
+            display: block;
+            margin-top: 18px;
+            font-weight: bold;
+        }
+
+        input, select {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 12px;
+            margin-top: 6px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+
+        button {
+            margin-top: 25px;
+            background: #273d6b;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <a href="/admin/dashboard" class="back">
+            ← Back to Dashboard
+        </a>
+
+        <h1>TAM Event Management</h1>
+        <p>Configure event details and upload schedules.</p>
+
+        <h2>Event Settings</h2>
+
+        <form method="post" action="/admin/events/save">
+            <input type="hidden"
+                   name="csrf_token"
+                   value="{{ csrf_token }}">
+
+            <label>Event Name</label>
+            <input type="text"
+                   name="event_name"
+                   value="{{ event.event_name }}"
+                   required>
+
+            <label>Event Date</label>
+            <input type="date"
+                   name="event_date"
+                   value="{{ event.event_date or '' }}"
+                   required>
+
+            <label>Upload Start Time</label>
+            <input type="time"
+                   name="upload_start_time"
+                   value="{{ event.upload_start_time }}"
+                   required>
+
+            <label>Upload End Time</label>
+            <input type="time"
+                   name="upload_end_time"
+                   value="{{ event.upload_end_time }}"
+                   required>
+
+            <label>Event Status</label>
+            <select name="status">
+                <option value="draft"
+                    {% if event.status == "draft" %}selected{% endif %}>
+                    Draft
+                </option>
+                <option value="active"
+                    {% if event.status == "active" %}selected{% endif %}>
+                    Active
+                </option>
+                <option value="completed"
+                    {% if event.status == "completed" %}selected{% endif %}>
+                    Completed
+                </option>
+            </select>
+
+            <label>Photo Retention (Hours)</label>
+            <input type="number"
+                   name="retention_hours"
+                   value="{{ event.retention_hours }}"
+                   min="1"
+                   required>
+
+            <button type="submit">Save Event Settings</button>
+        </form>
+    </div>
+</body>
+</html>

@@ -1,0 +1,244 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TAM Contributor Management</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f3f5f9;
+            padding: 30px;
+            margin: 0;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+        }
+
+        h1, h2 {
+            color: #273d6b;
+        }
+
+        .back-button {
+            display: inline-block;
+            background: #273d6b;
+            color: white;
+            padding: 10px 18px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        th {
+            background: #273d6b;
+            color: white;
+            text-align: left;
+        }
+
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        button {
+            background: #273d6b;
+            color: white;
+            border: none;
+            padding: 9px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .approved {
+            color: green;
+            font-weight: bold;
+        }
+
+        .pending {
+            color: #a66b00;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <a href="/admin/dashboard" class="back-button">
+            ← Back to Dashboard
+        </a>
+
+        <h1>TAM Contributor Management</h1>
+        <p>Review community members registered for TAM events.</p>
+
+        <h2>Registered Contributors</h2>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>S.No.</th>
+                    <th>Contributor ID</th>
+                    <th>Name</th>
+                    <th>Mobile</th>
+                    <th>Status</th>
+                    <th>Approved By</th>
+                    <th>Approved At</th>
+                    <th>Upload Access</th>
+                
+                    <th>Action</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for contributor in contributors %}
+                <tr>
+                    
+                    <td>{{ loop.index }}</td>
+                    <td>{{ contributor.id }}</td>
+                    <td>{{ contributor.name }}</td>
+                    <td>{{ contributor.mobile_number or "Not provided" }}</td>
+                        
+                        
+                    <!-- Status -->
+                    <td>
+                        {% if contributor.approved %}
+                            <span class="approved">Approved</span>
+                        {% else %}
+                            <span class="pending">Pending</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Approved By -->
+                    <td>
+                        {% if contributor.approved %}
+                            {{ contributor.approved_by or "Legacy / Unknown" }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+
+                    <!-- Approved At -->
+                    <td>
+                        {% if contributor.approved_at %}
+                            {{ contributor.approved_at }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>                   
+                    <td>
+                        {% if not contributor.active or contributor.deleted_at %}
+                            <span style="color: red;">Account Disabled</span>
+                        {% elif not contributor.approved %}
+                            <span style="color: orange;">Awaiting Approval</span>
+                        {% elif contributor.uploads_enabled %}
+                            <span style="color: green;">Enabled</span>
+                        {% else %}
+                            <span style="color: red;">Disabled</span>
+                        {% endif %}
+                    </td>
+                    
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                        {% if not contributor.active or contributor.deleted_at %}
+                        
+                            <span>Account Deleted</span>
+
+                        {% elif not contributor.approved %}
+                            <form action="/admin/approve/{{ contributor.id }}"
+                                method="post">
+                                <input type="hidden"
+                                    name="csrf_token"
+                                    value="{{ csrf_token }}">
+                                <button type="submit"
+                                        onclick="return confirm('Approve this contributor?')">
+                                    Approve
+                                </button>
+                            </form>
+
+                        {% elif contributor.uploads_enabled %}
+                            <form action="/admin/contributors/{{ contributor.id }}/disable-uploads"
+                                method="post">
+                                <input type="hidden"
+                                    name="csrf_token"
+                                    value="{{ csrf_token }}">
+                                <button type="submit"
+                                        style="background-color: #d97706;
+                                           color: white;
+                                            border: none;
+                                            padding: 8px 12px;
+                                            border-radius: 4px;
+                                            cursor: pointer;"
+                                        onclick="return confirm('Disable uploads for this contributor? Existing photos will be preserved.')">
+                                    Disable 
+                                </button>
+                            </form>
+
+                                                    
+                        {% else %}
+                            <form action="/admin/contributors/{{ contributor.id }}/enable-uploads"
+                                method="post"
+                                style="margin: 0;">
+
+                                <input type="hidden"
+                                    name="csrf_token"
+                                    value="{{ csrf_token }}">
+
+                                <button type="submit"
+                                        style="background-color: #21854b;
+                                            color: white;
+                                            border: none;
+                                            padding: 8px 12px;
+                                            border-radius: 4px;
+                                            cursor: pointer;"
+                                        onclick="return confirm('Enable uploads for this contributor?')">
+                                    Enable
+                                </button>
+                            </form>
+                        {% endif %}
+
+
+                        {% if contributor.active and not contributor.deleted_at %}
+                        <form action="/admin/contributors/{{ contributor.id }}/delete"
+                            method="post"
+                            style="margin: 0;">
+
+                            <input type="hidden"
+                                name="csrf_token"
+                                value="{{ csrf_token }}">
+
+                            <button type="submit"
+                                    style="background-color: #c0392b; color: white;
+                                        border: none; padding: 8px 12px;
+                                        border-radius: 4px; cursor: pointer;"
+                                    onclick="return confirm('Delete this contributor? Their existing photos will be preserved.')">
+                                Delete 
+                            </button>
+                        </form>
+                    {% endif %}
+                        </div>
+                    </td>                
+
+                    
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="9">No contributors registered yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

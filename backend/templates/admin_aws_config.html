@@ -1,0 +1,199 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>TAM AWS Management</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f2f4f8;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 550px;
+            margin: 40px auto;
+            background: white;
+            padding: 28px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        }
+
+        h1 {
+            color: #273d6b;
+            text-align: center;
+        }
+
+        .field {
+            margin-top: 18px;
+        }
+
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 7px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-sizing: border-box;
+        }
+
+        .notice {
+            background: #eef3fb;
+            padding: 15px;
+            border-radius: 8px;
+            line-height: 1.6;
+            margin: 20px 0;
+        }
+
+        .button {
+            display: block;
+            background: #273d6b;
+            color: white;
+            padding: 13px;
+            border: none;
+            border-radius: 6px;
+            text-align: center;
+            text-decoration: none;
+            margin-top: 20px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="container">
+        <h1>TAM AWS Management</h1>
+
+        <a href="/admin/dashboard" class="button">
+            ← Back to Super Admin Dashboard
+        </a>
+
+        <div class="notice">
+            <strong>Secure AWS Connection</strong>
+            <p>
+                TAM will use an organization-managed AWS
+                connection instead of a developer's
+                personal credentials.
+            </p>
+            <p>
+                Only the TAM Super Admin should enter AWS credentials here.
+                Credentials are verified before being saved.
+            </p>
+        </div>
+
+        <div class="field">
+            <label for="region">AWS Region</label>
+            <input id="region"
+                   value="ca-central-1"
+                   readonly>
+        </div>
+
+        <div class="field">
+            <label for="bucket">TAM S3 Bucket</label>
+            <input id="bucket"
+                   value="tam-smart-event-photos"
+                   readonly>
+        </div>
+
+        <div class="field">
+            <label for="connection">AWS Connection Method</label>
+            <input id="connection"
+                   value="AWS Access Keys (TAM-managed)"
+                   readonly>
+        </div>
+
+        
+        <div class="notice">
+            <strong>Connection Status</strong>
+            <p>{{ aws_status }}</p>
+
+            <strong>AWS Credential Source</strong>
+            <p>{{ aws_identity }}</p>
+        </div>
+
+
+        <div class="notice">
+            <strong>Update AWS Credentials</strong>
+            <p>
+                Only the TAM Super Admin can update
+                the AWS connection.
+            </p>
+            <p>
+                New credentials will be tested before
+                replacing the existing configuration.
+            </p>
+        </div>
+
+        {% if aws_message %}
+        <div class="notice" role="status">
+            {{ aws_message }}
+        </div>
+        {% endif %}
+
+        <form action="/admin/aws/save" method="post"
+            autocomplete="off">
+
+            <input type="hidden"
+                name="csrf_token"
+                value="{{ csrf_token }}">
+
+            <div class="field">
+                <label for="aws_access_key">
+                    AWS Access Key ID
+                </label>
+                <input type="text"
+                    id="aws_access_key"
+                    name="aws_access_key"
+                    autocomplete="off"
+                    required>
+            </div>
+
+            <div class="field">
+                <label for="aws_secret_key">
+                    AWS Secret Access Key
+                </label>
+                <input type="password"
+                    id="aws_secret_key"
+                    name="aws_secret_key"
+                    autocomplete="new-password"
+                    required>
+            </div>
+
+            <div class="field">
+                <label for="aws_session_token">
+                    AWS Session Token (optional)
+                </label>
+                <input type="password"
+                    id="aws_session_token"
+                    name="aws_session_token"
+                    autocomplete="off">
+            </div>
+
+            
+            <button type="submit" style="font-size: 16px;">
+                Test &amp; Save AWS Credentials
+            </button>
+
+        </form>
+
+
+        <p style="font-size: 13px; color: #666;">
+            AWS credentials will be verified before saving.
+            Only the TAM Super Admin can update them.
+        </p>      
+
+    </main>
+</body>
+</html>
