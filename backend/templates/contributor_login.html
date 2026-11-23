@@ -187,19 +187,24 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 }
 </style>
 
+
+<!-- TAM-CONTRIBUTOR-LOGIN-RED-BORDER-V1 -->
+<link rel="stylesheet"
+      href="/static/css/tam-exact-border.css?v=1">
+
+<!-- TAM-CONTRIBUTOR-NAME-FORM-V1 -->
 </head>
 
 <body>
-    <div class="container">
+    <div class="container tam-exact-border">
         <h1>TAM Member Login</h1>
         <p>Sign in to upload your event photos</p>
 
         <form id="loginForm">
-            <label for="contributor_id">Contributor ID</label>
-            <input type="number"
-                   id="contributor_id"
-                   required
-                   min="1">
+            <label for="contributor_name">Contributor Name</label>
+            <input type="text"
+                   id="contributor_name"
+                   required>
 
             <label for="password">Password</label>
             <input type="password"
@@ -208,6 +213,26 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 
             <button type="submit">Login</button>
         </form>
+    <div style="text-align:center; margin-top:20px;">
+        <p style="color:#555; font-size:14px;">
+            New contributor?
+        </p>
+
+        <a href="/contributor/register"
+           style="
+               display:inline-block;
+               padding:12px 22px;
+               background:#702080;
+               color:white;
+               text-decoration:none;
+               border-radius:8px;
+               font-weight:bold;
+               font-size:15px;
+           ">
+            Register as Contributor
+        </a>
+    </div>
+
 
         <p id="message" role="status"></p>
     </div>
@@ -217,9 +242,9 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             .addEventListener("submit", async function(event) {
                 event.preventDefault();
 
-                const contributor_id = Number(
-                    document.getElementById("contributor_id").value
-                );
+                const name = document
+        .getElementById("contributor_name")
+        .value.trim();
                 const password =
                     document.getElementById("password").value;
 
@@ -234,7 +259,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
                         },
                         credentials: "same-origin",
                         body: JSON.stringify({
-                            contributor_id,
+                            name,
                             password
                         })
                     });

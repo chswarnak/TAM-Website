@@ -70,10 +70,14 @@
             box-sizing: border-box;
         }
     </style>
+<!-- TAM-ADMIN-SPECIAL-PAGES-BORDER-V1 -->
+<link rel="stylesheet" href="/static/css/tam-exact-border.css?v=1">
+<!-- TAM-ADMIN-SPECIAL-FESTIVAL-V1 -->
+<link rel="stylesheet" href="/static/css/tam-admin-festival.css?v=1">
 </head>
 
 <body>
-    <main class="container">
+    <main class="container tam-exact-border tam-admin-festival">
         <h1>TAM AWS Management</h1>
 
         <a href="/admin/dashboard" class="button">
@@ -110,7 +114,7 @@
         <div class="field">
             <label for="connection">AWS Connection Method</label>
             <input id="connection"
-                   value="AWS Access Keys (TAM-managed)"
+                   value="See AWS identity status on this page"
                    readonly>
         </div>
 
@@ -142,51 +146,31 @@
         </div>
         {% endif %}
 
-        <form action="/admin/aws/save" method="post"
-            autocomplete="off">
 
-            <input type="hidden"
-                name="csrf_token"
-                value="{{ csrf_token }}">
+<!-- TAM-AWS-IAM-INTERFACE-V1 -->
+<div style="
+    background:#edf4ff;
+    border:1px solid #d6b36a;
+    border-radius:12px;
+    padding:18px;
+    margin-top:20px;
+">
+    <strong>🔐 AWS Credential Management</strong>
 
-            <div class="field">
-                <label for="aws_access_key">
-                    AWS Access Key ID
-                </label>
-                <input type="text"
-                    id="aws_access_key"
-                    name="aws_access_key"
-                    autocomplete="off"
-                    required>
-            </div>
+    <p>
+        The AWS identity status shows the credential provider detected by TAM.
+    </p>
 
-            <div class="field">
-                <label for="aws_secret_key">
-                    AWS Secret Access Key
-                </label>
-                <input type="password"
-                    id="aws_secret_key"
-                    name="aws_secret_key"
-                    autocomplete="new-password"
-                    required>
-            </div>
+    <p>
+        AWS credentials are configured on the server. This page displays connection status.
+    </p>
 
-            <div class="field">
-                <label for="aws_session_token">
-                    AWS Session Token (optional)
-                </label>
-                <input type="password"
-                    id="aws_session_token"
-                    name="aws_session_token"
-                    autocomplete="off">
-            </div>
+    <p>
+        <strong>Credential values:</strong>
+        ********
+    </p>
+</div>
 
-            
-            <button type="submit" style="font-size: 16px;">
-                Test &amp; Save AWS Credentials
-            </button>
-
-        </form>
 
 
         <p style="font-size: 13px; color: #666;">

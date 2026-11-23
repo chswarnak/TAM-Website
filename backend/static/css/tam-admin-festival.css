@@ -1,0 +1,106 @@
+/* TAM ADMIN FESTIVAL DESIGN V1
+   Shared decorative styling for administration pages.
+   Does not modify application logic or permissions.
+*/
+
+/* Navigation links */
+.tam-admin-festival .admin-navigation a {
+    display: inline-block;
+    padding: 12px 18px;
+    border: 1.5px solid #dba14c;
+    border-radius: 10px;
+    background: linear-gradient(
+        120deg,
+        #66306f,
+        #8b3d85,
+        #66306f
+    );
+    color: white;
+    font-weight: 600;
+    text-decoration: none;
+    box-shadow: 0 4px 12px rgba(105, 44, 105, .2);
+    transition: transform .2s ease, box-shadow .2s ease;
+}
+
+.tam-admin-festival .admin-navigation a:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(105, 44, 105, .35);
+}
+
+/* Tables */
+.tam-admin-festival table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fffaf2;
+    border: 1px solid #e2b66b;
+}
+
+.tam-admin-festival th {
+    background: linear-gradient(
+        120deg,
+        #69336b,
+        #873d79
+    );
+    color: white;
+    padding: 12px;
+    text-align: left;
+}
+
+.tam-admin-festival td {
+    padding: 11px 12px;
+    border-bottom: 1px solid #eedbbd;
+}
+
+.tam-admin-festival tbody tr:nth-child(even) {
+    background: #fff1e0;
+}
+
+.tam-admin-festival tbody tr:hover {
+    background: #ffe9ce;
+}
+
+/* Form controls */
+.tam-admin-festival input:not([type="checkbox"]):not([type="radio"]),
+.tam-admin-festival select,
+.tam-admin-festival textarea {
+    border: 1.5px solid #d9b478;
+    border-radius: 8px;
+    padding: 10px;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.tam-admin-festival input:focus-visible,
+.tam-admin-festival select:focus-visible,
+.tam-admin-festival textarea:focus-visible {
+    outline: 2px solid #ac5b91;
+    outline-offset: 2px;
+}
+
+/* Generic enabled action buttons */
+.tam-admin-festival button:not(:disabled) {
+    border-radius: 8px;
+    transition: box-shadow .2s ease;
+}
+
+.tam-admin-festival button:not(:disabled):hover {
+    box-shadow: 0 0 12px rgba(226, 162, 70, .35);
+}
+
+/* Preserve disabled controls */
+.tam-admin-festival button:disabled,
+.tam-admin-festival [aria-disabled="true"] {
+    opacity: .55;
+    cursor: not-allowed;
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+    .tam-admin-festival * {
+        transition: none !important;
+    }
+
+    .tam-admin-festival .admin-navigation a:hover {
+        transform: none;
+    }
+}

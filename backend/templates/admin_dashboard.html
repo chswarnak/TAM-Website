@@ -80,10 +80,96 @@
         }
 
     </style>
+
+<!-- TAM-ADMIN-DASHBOARD-EXACT-BORDER-V1 -->
+<link rel="stylesheet"
+      href="/static/css/tam-exact-border.css?v=1">
+
+
+<!-- TAM-ADMIN-FESTIVAL-DASHBOARD-V1 -->
+<link rel="stylesheet"
+      href="/static/css/tam-admin-festival.css?v=1">
+
+
+<!-- TAM-ADMIN-NAVIGATION-FIX-V1 -->
+<style>
+
+/* TAM Admin Dashboard — consistent navigation */
+
+/* Keep five buttons together on wider screens */
+@media (min-width: 900px) {
+
+    .tam-admin-festival .admin-navigation {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+    }
+
+    .tam-admin-festival .admin-navigation a {
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        padding: 12px 8px !important;
+        font-size: 12px !important;
+        text-align: center !important;
+        white-space: nowrap !important;
+    }
+}
+
+/* Unified purple-and-gold button appearance */
+.tam-admin-festival .admin-navigation a {
+    background: linear-gradient(
+        120deg,
+        #66306f,
+        #8b3d85,
+        #66306f
+    ) !important;
+
+    border: 1.5px solid #dba14c !important;
+    border-radius: 10px !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+
+    box-shadow:
+        0 4px 12px rgba(105,44,105,.22) !important;
+}
+
+/* Hover */
+.tam-admin-festival .admin-navigation a:hover {
+    background: linear-gradient(
+        120deg,
+        #823783,
+        #a24d99,
+        #823783
+    ) !important;
+
+    box-shadow:
+        0 6px 18px rgba(105,44,105,.4) !important;
+}
+
+/* Smaller screens: allow buttons to wrap */
+@media (max-width: 899px) {
+
+    .tam-admin-festival .admin-navigation {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+
+    .tam-admin-festival .admin-navigation a {
+        margin: 0 !important;
+        text-align: center !important;
+        padding: 12px !important;
+    }
+}
+
+</style>
+
 </head>
 
 <body>
-    <div class="container">
+    <div class="container tam-exact-border tam-admin-festival">
         <h1>TAM Organizer Dashboard</h1>
 
 
@@ -163,33 +249,22 @@
             </thead>
 
             <tbody>
+                {% for contributor in contributors %}
                 <tr>
-                    <td>1</td>
-                    <td>Swarna</td>
-                    <td>Not provided</td>
-                    <td class="approved">Approved</td>
+                    <td>{{ contributor.id }}</td>
+                    <td>{{ contributor.name }}</td>
+                    <td>{{ contributor.mobile }}</td>
+                    <td class="{{ 'approved' if contributor.approved else '' }}">
+                        {{ 'Approved' if contributor.approved else 'Pending' }}
+                    </td>
                 </tr>
-
+                {% else %}
                 <tr>
-                    <td>2</td>
-                    <td>Ramesh</td>
-                    <td>Not provided</td>
-                    <td class="approved">Approved</td>
+                    <td colspan="4">
+                        No active contributors registered yet.
+                    </td>
                 </tr>
-
-                <tr>
-                    <td>3</td>
-                    <td>Test Contributor</td>
-                    <td>****0123</td>
-                    <td class="approved">Approved</td>
-                </tr>
-
-                <tr>
-                    <td>4</td>
-                    <td>Test Guest 2</td>
-                    <td>****0124</td>
-                    <td class="approved">Approved</td>
-                </tr>
+                {% endfor %}
             </tbody>
         </table>
     </div>

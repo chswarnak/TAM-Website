@@ -1,0 +1,73 @@
+/* TAM EXACT DIWALI BORDER V1
+   Decorative artwork extracted from the approved reference.
+   Apply only to main dashboard panels.
+*/
+
+.tam-exact-border {
+    position: relative !important;
+    box-sizing: border-box !important;
+
+    background-color: #fff1de !important;
+
+    background-image:
+        url("/static/images/tam-border/corner_top_left.png"),
+        url("/static/images/tam-border/corner_top_right.png"),
+        url("/static/images/tam-border/corner_bottom_left.png"),
+        url("/static/images/tam-border/corner_bottom_right.png"),
+        url("/static/images/tam-border/lotus_top.png"),
+        url("/static/images/tam-border/flourish_bottom.png") !important;
+
+    background-position:
+        left top,
+        right top,
+        left bottom,
+        right bottom,
+        center top,
+        center bottom !important;
+
+    background-size:
+        107px 110px,
+        107px 110px,
+        107px 98px,
+        107px 98px,
+        min(85%, 345px) auto,
+        min(65%, 245px) auto !important;
+
+    background-repeat: no-repeat !important;
+
+    border: 3px solid #e6a23c !important;
+    border-radius: 26px !important;
+
+    box-shadow:
+        0 0 0 2px rgba(255, 226, 158, .55),
+        0 0 24px rgba(255, 171, 39, .45),
+        0 18px 45px rgba(38, 8, 47, .35) !important;
+
+    padding: 115px 32px 80px !important;
+}
+
+/* Preserve existing form behaviour and readable content. */
+.tam-exact-border input,
+.tam-exact-border button,
+.tam-exact-border select,
+.tam-exact-border textarea {
+    position: relative;
+    z-index: 1;
+}
+
+/* Smaller mobile screens. */
+@media (max-width: 650px) {
+    .tam-exact-border {
+        background-size:
+            70px 72px,
+            70px 72px,
+            70px 64px,
+            70px 64px,
+            min(75%, 250px) auto,
+            min(60%, 180px) auto !important;
+
+        padding: 90px 18px 65px !important;
+
+        border-radius: 20px !important;
+    }
+}

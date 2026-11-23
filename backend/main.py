@@ -1,3 +1,4 @@
+from fastapi.staticfiles import StaticFiles
 from database import DB_PATH
 import sqlite3
 from fastapi import FastAPI, Request, Form
@@ -32,7 +33,25 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 app = FastAPI()
+
+# TAM shared static assets (CSS, JavaScript, sound effects).
+app.mount(
+    "/static",
+    StaticFiles(directory="static"),
+    name="static",
+)
+
+
+# TAM-GALLERY-ROUTERS-V1
+# Gallery access remains controlled by database permissions.
+from gallery_pages import router as gallery_pages_router
+from gallery_routes import router as gallery_api_router
+
+app.include_router(gallery_pages_router)
+app.include_router(gallery_api_router)
+
 
 
 # Browser session configuration
@@ -98,8 +117,18 @@ templates = Jinja2Templates(directory="templates")
 # Current event for local testing
 EVENT_ID = "tam-diwali-2026"
 
+# TAM-DEV-UPLOAD-MODE-V1
+# TEMPORARY: Allow uploads during application development.
+# Set to False before the real event.
+# Contributor authentication and approval remain mandatory.
+DEV_UPLOADS_ANYTIME = False
+
 
 def is_upload_window_open(event_id=EVENT_ID, check_at=None):
+    # Allow testing without enforcing the event schedule.
+    if DEV_UPLOADS_ANYTIME and event_id == EVENT_ID:
+        return True
+
     from datetime import datetime, date, time
     from zoneinfo import ZoneInfo
 
@@ -156,7 +185,9 @@ class ContributorRegistration(BaseModel):
 
 
 class ContributorLogin(BaseModel):
-    contributor_id: int
+    # TAM-CONTRIBUTOR-NAME-LOGIN-V1
+    name: str | None = None
+    contributor_id: int | None = None
     password: str
 
 
@@ -243,11 +274,12 @@ def has_admin_permission(admin_id: int, permission: str) -> bool:
             """,
             (admin_id,)
         ).fetchone()
-        # Do not grant operational permissions until password setup is complete.
-        if admin["must_change_password"]:
+        # Reject missing, disabled, or deleted administrators first.
+        if admin is None:
             return False
 
-        if admin is None:
+        # Do not grant permissions until password setup is complete.
+        if admin["must_change_password"]:
             return False
 
         if admin["role"] == "super_admin":
@@ -468,10 +500,10 @@ def register_contributor(data: ContributorRegistration):
     mobile = data.mobile_number.strip()
     password = data.password
 
-    if len(password) < 12:
+    if len(password) < 8:
         raise HTTPException(
             status_code=400,
-            detail="Password must contain at least 12 characters"
+            detail="Password must contain at least 8 characters"
         )
 
     password_hash = password_hasher.hash(password)
@@ -483,7 +515,31 @@ def register_contributor(data: ContributorRegistration):
             detail="Name and mobile number are required"
         )
 
-    with sqlite3.connect(DB_PATH) as connection:
+    # TAM-UNIQUE-CONTRIBUTOR-NAME-V1
+    # Serialize registration writes to prevent concurrent duplicates.
+    with sqlite3.connect(DB_PATH, timeout=15) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+
+        existing = connection.execute(
+            """
+            SELECT id
+            FROM contributors
+            WHERE event_id = ?
+              AND LOWER(TRIM(name)) = LOWER(TRIM(?))
+            LIMIT 1
+            """,
+            (EVENT_ID, name)
+        ).fetchone()
+
+        if existing is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Contributor name already exists. "
+                    "Please choose a different name."
+                )
+            )
+
         cursor = connection.execute(
         
             """
@@ -509,25 +565,46 @@ def login_contributor(
     data: ContributorLogin,
     request: Request
 ):
-    # Look up the contributor's account.
+    # Look up contributor by registered name.
+    # Keep legacy ID login temporarily for compatibility.
+    contributor = None
+
     with sqlite3.connect(DB_PATH) as connection:
         connection.row_factory = sqlite3.Row
 
-        contributor = connection.execute(
-            """
-            SELECT id, name, password_hash,
-                   approved, active, deleted_at
-            FROM contributors
-            WHERE id = ? AND event_id = ?
-            """,
-            (data.contributor_id, EVENT_ID)
-        ).fetchone()
+        if data.name is not None and data.name.strip():
+            matches = connection.execute(
+                """
+                SELECT id, name, password_hash,
+                       approved, active, deleted_at
+                FROM contributors
+                WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
+                  AND event_id = ?
+                LIMIT 2
+                """,
+                (data.name.strip(), EVENT_ID)
+            ).fetchall()
+
+            # Fail closed when names are ambiguous.
+            if len(matches) == 1:
+                contributor = matches[0]
+
+        elif data.contributor_id is not None:
+            contributor = connection.execute(
+                """
+                SELECT id, name, password_hash,
+                       approved, active, deleted_at
+                FROM contributors
+                WHERE id = ? AND event_id = ?
+                """,
+                (data.contributor_id, EVENT_ID)
+            ).fetchone()
 
     # Reject unknown accounts and accounts without passwords.
     if contributor is None or not contributor["password_hash"]:
         raise HTTPException(
             status_code=401,
-            detail="Invalid contributor ID or password"
+            detail="Invalid contributor credentials"
         )
 
     # Verify the submitted password.
@@ -539,7 +616,7 @@ def login_contributor(
     except Exception:
         raise HTTPException(
             status_code=401,
-            detail="Invalid contributor ID or password"
+            detail="Invalid contributor credentials"
         )
 
     # Check account status.
@@ -797,12 +874,49 @@ async def admin_dashboard(request: Request):
             status_code=303
         )
 
+    # TAM-LIVE-DASHBOARD-CONTRIBUTORS-V1
+    # Load current contributors from the production database.
+    with sqlite3.connect(DB_PATH) as connection:
+        connection.row_factory = sqlite3.Row
+
+        rows = connection.execute(
+            """
+            SELECT id, name, mobile_number, approved
+            FROM contributors
+            WHERE event_id = ?
+              AND active = 1
+              AND deleted_at IS NULL
+            ORDER BY id DESC
+            """,
+            (EVENT_ID,)
+        ).fetchall()
+
+    contributors = []
+
+    for row in rows:
+        mobile = row["mobile_number"] or ""
+        digits = "".join(c for c in mobile if c.isdigit())
+
+        masked_mobile = (
+            "****" + digits[-4:]
+            if len(digits) >= 4
+            else "Not provided"
+        )
+
+        contributors.append({
+            "id": row["id"],
+            "name": row["name"],
+            "mobile": masked_mobile,
+            "approved": bool(row["approved"])
+        })
+
     return templates.TemplateResponse(
         request=request,
         name="admin_dashboard.html",
         context={
             "admin_name": admin[0],
-            "admin_role": admin[1]
+            "admin_role": admin[1],
+            "contributors": contributors
         }
     )
 
@@ -1605,6 +1719,17 @@ def delete_contributor(
     )
 
 
+@app.get("/contributor/register", response_class=HTMLResponse)
+async def contributor_register_page(request: Request):
+    # Display the contributor self-registration page.
+    # Actual registration is handled by the existing POST /register API.
+    return templates.TemplateResponse(
+        request=request,
+        name="contributor_register.html",
+        context={}
+    )
+
+
 @app.get("/contributor/login", response_class=HTMLResponse)
 async def contributor_login_page(request: Request):
     return templates.TemplateResponse(
@@ -1767,13 +1892,22 @@ async def manage_aws(request: Request):
             )
         
     
-    aws_status = "Not connected"
-    aws_identity = "TAM .env credentials"
+    # TAM-AWS-IAM-STATUS-V2
+    # Report authentication independently from S3 permissions.
+    # Never expose AWS account IDs or credentials.
+
+    aws_status = "AWS authentication unavailable"
+    aws_identity = "Credential source not verified"
 
     try:
-        # Always use credentials from TAM's .env file.
-        # Never fall back to Ubuntu environment variables.
         session = get_tam_aws_session()
+        credentials = session.get_credentials()
+
+        provider = (
+            credentials.method
+            if credentials is not None
+            else "unknown"
+        )
 
         sts = session.client(
             "sts",
@@ -1785,24 +1919,69 @@ async def manage_aws(request: Request):
         )
 
         identity = sts.get_caller_identity()
+        arn = identity.get("Arn", "")
 
-        s3_client = get_tam_s3_client()
-        s3_client.head_bucket(
-            Bucket="tam-smart-event-photos"
-        )
+        if provider == "iam-role" and ":assumed-role/" in arn:
+            role_name = (
+                arn.split(":assumed-role/", 1)[1]
+                .split("/", 1)[0]
+            )
+            aws_identity = "EC2 IAM Role: " + role_name
 
-        aws_status = "Connected to TAM S3"
-        aws_identity = (
-            "TAM .env credentials — "
-            + identity.get("Arn", "Verified AWS identity")
-        )
+        elif provider == "iam-role":
+            aws_identity = "EC2 IAM Role"
+
+        else:
+            aws_identity = (
+                "AWS credential provider: " + provider
+            )
+
+        # STS authentication succeeded.
+        aws_status = "AWS authenticated"
+
+        # Check S3 separately.
+        try:
+            s3_client = get_tam_s3_client()
+
+            s3_client.head_bucket(
+                Bucket="tam-smart-event-photos"
+            )
+
+            aws_status = (
+                "AWS authenticated | S3 bucket check: successful"
+            )
+
+        except Exception as s3_error:
+            error_code = ""
+
+            if hasattr(s3_error, "response"):
+                error_code = str(
+                    s3_error.response
+                    .get("Error", {})
+                    .get("Code", "")
+                )
+
+            if error_code in ("403", "AccessDenied"):
+                aws_status = (
+                    "AWS authenticated | "
+                    "S3 bucket check: access denied (403)"
+                )
+
+            elif error_code in ("404", "NoSuchBucket"):
+                aws_status = (
+                    "AWS authenticated | S3 bucket not found"
+                )
+
+            else:
+                aws_status = (
+                    "AWS authenticated | S3 bucket check: unavailable"
+                )
 
     except Exception:
-        aws_status = "Not connected"
-        aws_identity = "TAM .env credentials not verified"
+        aws_status = "AWS authentication unavailable"
+        aws_identity = "Credential source not verified"
 
 
-    
     return templates.TemplateResponse(
         request=request,
         name="admin_aws_config.html",

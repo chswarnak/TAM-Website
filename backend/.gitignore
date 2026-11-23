@@ -1,0 +1,26 @@
+.env
+venv/
+__pycache__/
+*.db
+uploads/
+
+# Private configuration
+.env
+.env.*
+!.env.example
+
+# Private database backups
+backups/
+
+
+# TAM photo import data
+tam_import_manifest.json
+tam_full_import.log
+
+# Generated photo previews
+watermark_previews/
+
+# Local test and backup files
+*.bak
+*.db-wal
+*.db-shm
