@@ -2295,11 +2295,6 @@ async def guest_photo_download(photo_id: int, request: Request):
     from photo_watermark import add_contributor_watermark
     from aws_config import get_tam_s3_client
 
-    client_host = request.client.host if request.client else ""
-
-    if client_host not in ("127.0.0.1", "::1"):
-        raise HTTPException(status_code=403, detail="Not publicly available.")
-
     guest_token = request.cookies.get("tam_guest_photos")
 
     if not guest_token:
@@ -2396,14 +2391,6 @@ async def guest_photo_thumbnail(
     from photo_watermark import create_guest_thumbnail
     from aws_config import get_tam_s3_client
 
-    client_host = request.client.host if request.client else ""
-
-    if client_host not in ("127.0.0.1", "::1"):
-        raise HTTPException(
-            status_code=403,
-            detail="Guest photos are not publicly available."
-        )
-
     guest_token = request.cookies.get("tam_guest_photos")
 
     if not guest_token:
@@ -2481,14 +2468,6 @@ async def list_guest_photos(request: Request):
     from fastapi.responses import JSONResponse
     from guest_sessions import list_guest_authorized_photos
 
-    client_host = request.client.host if request.client else ""
-
-    if client_host not in ("127.0.0.1", "::1"):
-        return JSONResponse(
-            {"error": "Guest gallery is not publicly available."},
-            status_code=403
-        )
-
     guest_token = request.cookies.get("tam_guest_photos")
 
     if not guest_token:
@@ -2533,15 +2512,6 @@ async def search_guest_photos(request: Request):
     from fastapi.responses import JSONResponse
     from rekognition_service import find_matching_event_photos
 
-    # Prevent remote access until guest privacy controls are ready.
-    client_host = request.client.host if request.client else ""
-
-    if client_host not in ("127.0.0.1", "::1"):
-        return JSONResponse(
-            {"error": "Search is not publicly available yet."},
-            status_code=403
-        )
-
     
     # Verify the temporary consent-flow cookie before
     # accepting a selfie or calling AWS Rekognition.
@@ -2576,26 +2546,26 @@ async def search_guest_photos(request: Request):
 
 
 
-    # Development-only same-origin protection.
-    allowed_origins = (
-        "http://127.0.0.1:8000",
-        "http://localhost:8000"
-    )
-
+    # Allow selfie searches only from the official HTTPS website.
+    allowed_origin = "https://tam-smartphotos.duckdns.org"
     origin = request.headers.get("origin", "")
 
-    if origin not in allowed_origins:
+    if origin != allowed_origin:
         return JSONResponse(
-            {
-                "error": (
-                    "Invalid request origin. "
-                    "Please use the local TAM website."
-                )
-            },
+            {"error": "Invalid photo-search request origin."},
             status_code=403
         )
 
+    # Require HTTPS at the public reverse proxy.
+    forwarded_proto = request.headers.get(
+        "x-forwarded-proto", ""
+    )
 
+    if forwarded_proto != "https":
+        return JSONResponse(
+            {"error": "Secure HTTPS connection required."},
+            status_code=403
+        )
 
     if request.headers.get("content-length"):
         if int(request.headers["content-length"]) > 6 * 1024 * 1024:
@@ -2771,7 +2741,7 @@ async def search_guest_photos(request: Request):
         value=guest_token,
         max_age=30 * 60,
         httponly=True,
-        secure=False,  # Local HTTP development only
+        secure=True,  # HTTPS-only guest session cookie
         samesite="lax",
         path="/"
     )
