@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TAM | Approve Registration</title>
+    <link rel="stylesheet" href="/static/css/tam-admin-festival.css">
+    <style>
+        body { font-family: Arial, sans-serif; background: #fff7e6; color: #35143e;
+               display: flex; justify-content: center; padding: 24px; margin: 0; }
+        .card { max-width: 480px; width: 100%; background: white; padding: 28px;
+                border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.12); }
+        h1 { color: #702080; margin-top: 0; }
+        dt { font-weight: bold; margin-top: 10px; }
+        dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+        button { margin-top: 22px; width: 100%; padding: 14px; border: none;
+                 border-radius: 8px; background: #21854b; color: white;
+                 font-size: 16px; font-weight: bold; cursor: pointer; }
+        a { color: #702080; }
+    </style>
+</head>
+<body>
+    <main class="card">
+        {% if account %}
+            <h1>Approve this registration?</h1>
+            <dl>
+                <dt>Name</dt><dd>{{ account.full_name }}</dd>
+                <dt>Email</dt><dd>{{ account.email }}</dd>
+                {% if account.username %}<dt>Username</dt><dd>{{ account.username }}</dd>{% endif %}
+                <dt>Role</dt><dd>{{ account.label }}</dd>
+            </dl>
+            <form method="post" action="/admin/approve-link">
+                <input type="hidden" name="token" value="{{ token }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit">Approve</button>
+            </form>
+        {% else %}
+            <h1>Link no longer valid</h1>
+            <p>This approval link was already used, has expired, or the
+               account is no longer pending.</p>
+        {% endif %}
+        <p><a href="/admin/dashboard#pending">Go to pending approvals</a></p>
+    </main>
+</body>
+</html>

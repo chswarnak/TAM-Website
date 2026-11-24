@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 import accounts
+import notifications
 import rate_limit
 from http_security import client_ip, require_same_origin
 from settings import SETTINGS
@@ -79,6 +80,9 @@ def _register_api(kind: str):
             raise HTTPException(status_code=error.status_code,
                                 detail=str(error)) from error
         logger.info("New %s registration %s (pending approval)", kind, account_id)
+        # Send right away if the digest interval allows; otherwise the
+        # background loop includes it in the next digest.
+        background_tasks.add_task(notifications.send_pending_digest)
         return {"message": "Registration submitted", "status": "pending_approval"}
     return register
 

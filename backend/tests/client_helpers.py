@@ -28,7 +28,7 @@ def admin_login(client: TestClient, username="boss",
                            follow_redirects=False)
     assert response.status_code == 303, response.text
     # Redirects to the change-password page while a temporary password is set.
-    page = client.get("/admin/contributors/manage")
+    page = client.get("/admin/dashboard")
     return csrf_from(page.text)
 
 

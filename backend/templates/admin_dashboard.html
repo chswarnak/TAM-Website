@@ -216,6 +216,7 @@
         </p>
 
         <form action="/admin/logout" method="post" style="text-align: right;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" style="
                 background-color: #c0392b;
                 color: white;
@@ -229,12 +230,62 @@
             </button>
         </form>
 
-        <h3>Event: TAM Diwali 2026</h3>
+        <h3>Event: {{ event_id }}</h3>
 
         <p>
             Welcome to the Smart Event
             Photo Sharing administration panel.
         </p>
+
+        <section id="pending">
+            <h2>Pending approvals</h2>
+            <p>Pending approvals: <strong>{{ pending | length }}</strong></p>
+            {% if not email_enabled %}
+            <p style="color:#9a3412;">
+                Email notifications are not configured, so new registrations
+                only appear here.
+            </p>
+            {% endif %}
+
+            {% if pending and can_approve %}
+            <form method="post" action="/admin/accounts/approve-selected">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <table>
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" aria-label="Select all"
+                                       onclick="document.querySelectorAll('.pending-select').forEach(b => b.checked = this.checked)"></th>
+                            <th>Role</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Username</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for account in pending %}
+                        <tr>
+                            <td><input class="pending-select" type="checkbox" name="selected"
+                                       value="{{ account.kind }}:{{ account.id }}"
+                                       aria-label="Select {{ account.full_name }}"></td>
+                            <td>{{ account.kind | title }}</td>
+                            <td>{{ account.full_name }}</td>
+                            <td>{{ account.email or "—" }}</td>
+                            <td>{{ account.username or "—" }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <button type="submit">Approve selected</button>
+            </form>
+            <form method="post" action="/admin/accounts/approve-all"
+                  onsubmit="return confirm('Approve all {{ pending | length }} pending registrations?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit">Approve all pending</button>
+            </form>
+            {% elif pending %}
+            <p>You do not have permission to approve registrations.</p>
+            {% endif %}
+        </section>
 
         <h2>Registered Contributors</h2>
 

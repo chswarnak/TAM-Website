@@ -1,3 +1,7 @@
+import asyncio
+from contextlib import asynccontextmanager
+
+import notifications
 from fastapi.staticfiles import StaticFiles
 from database import DB_PATH
 from settings import SETTINGS
@@ -47,7 +51,15 @@ AWS_CHECK_ERRORS = (ClientError, BotoCoreError, RuntimeError, ValueError, OSErro
 load_dotenv()
 
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Run the registration-digest email loop alongside the app."""
+    digest = asyncio.create_task(notifications.digest_loop())
+    yield
+    digest.cancel()
+
+
+app = FastAPI(lifespan=lifespan)
 
 # TAM shared static assets (CSS, JavaScript, sound effects).
 app.mount(
@@ -481,13 +493,26 @@ async def admin_dashboard(request: Request):
             "approved": bool(row["approved"])
         })
 
+    pending = [
+        {**row, "kind": kind}
+        for kind in accounts.KINDS
+        for row in accounts.list_accounts(kind, pending_only=True)
+    ]
+
     return templates.TemplateResponse(
         request=request,
         name="admin_dashboard.html",
         context={
             "admin_name": admin[0],
             "admin_role": admin[1],
-            "contributors": contributors
+            "contributors": contributors,
+            "event_id": EVENT_ID,
+            "pending": pending,
+            "can_approve": has_admin_permission(admin_id, "can_approve_contributors"),
+            "email_enabled": SETTINGS.email_enabled,
+            "csrf_token": create_csrf_token(
+                admin_id, request.session.get("csrf_nonce", "")
+            ),
         }
     )
 

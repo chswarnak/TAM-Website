@@ -3,13 +3,16 @@
 import logging
 
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 
+import account_tokens
 import accounts
-from admin_auth import require_admin_permission
+from admin_auth import create_csrf_token, require_admin_permission
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+templates = Jinja2Templates(directory="templates")
 
 APPROVE_PERMISSION = "can_approve_contributors"
 
@@ -80,3 +83,76 @@ def set_account_login(
 
 def _manage_page(kind: str) -> str:
     return "/admin/contributors/manage" if kind == "contributor" else "/admin/dashboard"
+
+
+# ------------------------------------------------------- one-click approval
+
+def _account_summary(kind: str, account_id: int) -> dict | None:
+    for row in accounts.list_accounts(kind, pending_only=True):
+        if row["id"] == account_id:
+            return {**row, "kind": kind, "label": kind.title()}
+    return None
+
+
+@router.get("/admin/approve-link", response_class=HTMLResponse)
+def approve_link_page(request: Request, token: str = ""):
+    """Confirmation page for an emailed Approve link. Never approves on GET
+    (mail scanners prefetch links)."""
+    if not isinstance(request.session.get("admin_id"), int):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    admin_id = require_admin_permission(request, APPROVE_PERMISSION)
+
+    target = account_tokens.peek(token, "approve")
+    account = _account_summary(*target) if target else None
+    return templates.TemplateResponse(
+        request=request, name="admin_approve_link.html",
+        status_code=200 if account else 410,
+        context={"account": account, "token": token,
+                 "csrf_token": create_csrf_token(
+                     admin_id, request.session.get("csrf_nonce", ""))},
+    )
+
+
+@router.post("/admin/approve-link")
+def approve_link_confirm(request: Request, token: str = Form(...),
+                         csrf_token: str = Form(...)):
+    admin_id = require_admin_permission(request, APPROVE_PERMISSION, csrf_token)
+    target = account_tokens.consume(token, "approve")
+    if target is None:
+        raise HTTPException(status_code=410,
+                            detail="This approval link was already used or has expired.")
+    kind, account_id = target
+    approved = accounts.approve(kind, [account_id], admin_id)
+    logger.info("Admin %s approved %s %s via email link (changed=%d)",
+                admin_id, kind, account_id, approved)
+    return RedirectResponse(url="/admin/dashboard#pending", status_code=303)
+
+
+# ------------------------------------------------------------ bulk approval
+
+@router.post("/admin/accounts/approve-selected")
+def approve_selected(request: Request, csrf_token: str = Form(...),
+                     selected: list[str] = Form(default=[])):
+    """selected values look like "attendee:12" or "contributor:3"."""
+    admin_id = require_admin_permission(request, APPROVE_PERMISSION, csrf_token)
+    ids: dict[str, list[int]] = {kind: [] for kind in accounts.KINDS}
+    for value in selected:
+        kind, _, raw_id = value.partition(":")
+        if kind not in ids or not raw_id.isdigit():
+            raise HTTPException(status_code=400, detail=f"Invalid selection: {value!r}")
+        ids[kind].append(int(raw_id))
+    total = sum(accounts.approve(kind, kind_ids, admin_id)
+                for kind, kind_ids in ids.items())
+    logger.info("Admin %s approved %d selected account(s)", admin_id, total)
+    return RedirectResponse(url="/admin/dashboard#pending", status_code=303)
+
+
+@router.post("/admin/accounts/approve-all")
+def approve_all_pending(request: Request, csrf_token: str = Form(...)):
+    admin_id = require_admin_permission(request, APPROVE_PERMISSION, csrf_token)
+    total = 0
+    for kind in accounts.KINDS:
+        pending = [row["id"] for row in accounts.list_accounts(kind, pending_only=True)]
+        total += accounts.approve(kind, pending, admin_id)
+    logger.info("Admin %s approved all %d pending account(s)", admin_id, total)
+    return RedirectResponse(url="/admin/dashboard#pending", status_code=303)
