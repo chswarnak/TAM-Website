@@ -1,10 +1,12 @@
 
 import sqlite3
+
+from settings import SETTINGS
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from database import DB_PATH
 
-EVENT_ID = "tam-diwali-2026"
+EVENT_ID = SETTINGS.event_id
 CONSENT_VERSION = "1.0"
 
 CONSENT_FORM_STATUS = "development"

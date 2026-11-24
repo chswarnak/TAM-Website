@@ -1,5 +1,6 @@
 from fastapi.staticfiles import StaticFiles
 from database import DB_PATH
+from settings import SETTINGS
 import sqlite3
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import RedirectResponse
@@ -117,7 +118,7 @@ templates = Jinja2Templates(directory="templates")
 
 
 # Current event for local testing
-EVENT_ID = "tam-diwali-2026"
+EVENT_ID = SETTINGS.event_id
 
 # TAM-DEV-UPLOAD-MODE-V1
 # TEMPORARY: Allow uploads during application development.
@@ -311,7 +312,7 @@ def has_admin_permission(admin_id: int, permission: str) -> bool:
 @app.get("/")
 def home():
     return RedirectResponse(
-        url="/events/tam-diwali-2026",
+        url=f"/events/{EVENT_ID}",
         status_code=302
     )
 
@@ -384,7 +385,7 @@ async def upload_photo(
 
     # Generate a unique filename
     filename = f"{uuid4()}{extensions[image_format]}"
-    event_id = "tam-diwali-2026"
+    event_id = EVENT_ID
  
     # Verify contributor registration in SQLite
     with sqlite3.connect(DB_PATH) as connection:
@@ -2728,7 +2729,7 @@ async def search_guest_photos(request: Request):
 
 
     # Allow selfie searches only from the official HTTPS website.
-    allowed_origin = "https://tam-smartphotos.duckdns.org"
+    allowed_origin = SETTINGS.allowed_origin
     origin = request.headers.get("origin", "")
 
     if origin != allowed_origin:
@@ -2742,7 +2743,7 @@ async def search_guest_photos(request: Request):
         "x-forwarded-proto", ""
     )
 
-    if forwarded_proto != "https":
+    if SETTINGS.require_https and forwarded_proto != "https":
         return JSONResponse(
             {"error": "Secure HTTPS connection required."},
             status_code=403
@@ -2942,7 +2943,7 @@ async def search_guest_photos(request: Request):
 
 
 @app.get(
-    "/events/tam-diwali-2026",
+    f"/events/{EVENT_ID}",
     response_class=HTMLResponse
 )
 async def tam_event_portal(request: Request):
@@ -2998,7 +2999,7 @@ async def submit_attendee_consent(request: Request):
     # Only accept submissions from the official TAM HTTPS website.
     origin = request.headers.get("origin", "")
 
-    if origin != "https://tam-smartphotos.duckdns.org":
+    if origin != SETTINGS.allowed_origin:
         return JSONResponse(
             {"error": "Invalid request origin."},
             status_code=403
@@ -3245,7 +3246,7 @@ async def admin_list_consents(request: Request):
         records.append(record)
 
     return JSONResponse({
-        "event_id": "tam-diwali-2026",
+        "event_id": EVENT_ID,
         "total_returned": len(records),
         "consents": records
     })
@@ -3485,10 +3486,10 @@ async def admin_watermarked_photo_preview(
             JOIN contributors c
               ON c.id = p.contributor_id
             WHERE p.id = ?
-              AND p.event_id = 'tam-diwali-2026'
+              AND p.event_id = ?
               AND p.status = 'available'
             """,
-            (photo_id,)
+            (photo_id, EVENT_ID)
         ).fetchone()
 
     if (

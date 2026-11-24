@@ -1,265 +1,179 @@
+"""Face indexing and selfie search with Amazon Rekognition.
+
+A photo is indexed only when it has an explicit authorization row in
+photo_face_authorizations (written automatically at upload when the event's
+auto_authorize_face_indexing switch is on, or by an admin otherwise).
+"""
+
+import logging
 import sqlite3
-from database import DB_PATH
+from io import BytesIO
+
+from botocore.exceptions import BotoCoreError, ClientError
+from PIL import Image, ImageOps, UnidentifiedImageError
+
 from aws_config import get_tam_aws_session
+from database import DB_PATH
+from settings import SETTINGS
+
+logger = logging.getLogger(__name__)
 
 TAM_REKOGNITION_REGION = "ca-central-1"
-TAM_COLLECTION_ID = "tam-diwali-2026-faces"
+TAM_S3_BUCKET = "tam-smart-event-photos"
+FACE_MATCH_THRESHOLD = 95
+MAX_SELFIE_BYTES = 20 * 1024 * 1024
+
+# Shared WHERE fragment: the photo is available, stored in TAM's bucket and
+# explicitly authorized for facial indexing. Parameters: (event_id,)
+_AUTHORIZED_PHOTO_SQL = """
+    p.event_id = ?
+    AND p.status = 'available'
+    AND p.s3_bucket = 'tam-smart-event-photos'
+    AND p.s3_key IS NOT NULL
+    AND a.authorized = 1
+    AND a.consent_reference IS NOT NULL
+    AND TRIM(a.consent_reference) != ''
+"""
+
+
+class FaceCollectionMissingError(RuntimeError):
+    """The configured Rekognition collection does not exist."""
 
 
 def get_tam_rekognition_client():
-    """
-    Create an AWS Rekognition client using
-    TAM's configured AWS credentials.
-    """
-    session = get_tam_aws_session()
-
-    return session.client(
+    """Create a Rekognition client from TAM's configured AWS credentials."""
+    return get_tam_aws_session().client(
         "rekognition",
         region_name=TAM_REKOGNITION_REGION
     )
 
 
-def get_collection_status():
-    """
-    Return the TAM collection status.
-    Does not index or modify any faces.
-    """
-    client = get_tam_rekognition_client()
-
-    result = client.describe_collection(
-        CollectionId=TAM_COLLECTION_ID
-    )
-
-    return {
-        "collection_id": TAM_COLLECTION_ID,
-        "face_count": result["FaceCount"],
-        "model_version": result["FaceModelVersion"]
-    }
+def _connect() -> sqlite3.Connection:
+    return sqlite3.connect(DB_PATH, timeout=10)
 
 
-
-def index_event_photo(photo_id: int):
-    """
-    Index an authorized TAM event photograph.
-
-    Deny indexing unless the photograph has
-    an explicit authorization record.
-    """
-    with sqlite3.connect(DB_PATH) as connection:
-        photo = connection.execute(
+def authorize_photo_for_indexing(photo_id: int, consent_reference: str) -> None:
+    """Record that this photo's faces may be indexed."""
+    if not consent_reference.strip():
+        raise ValueError("A consent reference is required.")
+    with _connect() as connection:
+        connection.execute(
             """
-            SELECT
-                p.event_id,
-                p.s3_bucket,
-                p.s3_key
-            FROM photos p
-            JOIN photo_face_authorizations a
-                ON a.photo_id = p.id
-            WHERE p.id = ?
-              AND p.status = 'available'
-              AND a.authorized = 1
-              AND a.consent_reference IS NOT NULL
-              AND TRIM(a.consent_reference) != ''
+            INSERT INTO photo_face_authorizations
+                (photo_id, authorized, consent_reference, authorized_at)
+            VALUES (?, 1, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(photo_id) DO UPDATE SET
+                authorized = 1,
+                consent_reference = excluded.consent_reference,
+                authorized_at = excluded.authorized_at
             """,
-            (photo_id,)
+            (photo_id, consent_reference)
+        )
+
+
+def _is_missing_collection(error: ClientError) -> bool:
+    return error.response.get("Error", {}).get("Code") == "ResourceNotFoundException"
+
+
+def _index_faces(client, bucket: str, s3_key: str, photo_id: int) -> list[str]:
+    def call():
+        return client.index_faces(
+            CollectionId=SETTINGS.collection_id,
+            Image={"S3Object": {"Bucket": bucket, "Name": s3_key}},
+            ExternalImageId=f"tam_photo_{photo_id}",
+            DetectionAttributes=[],
+            MaxFaces=100,
+            QualityFilter="AUTO"
+        )
+
+    try:
+        result = call()
+    except ClientError as error:
+        if not _is_missing_collection(error):
+            raise
+        if not SETTINGS.collection_id_explicit:
+            # Never create a collection implicitly for the default
+            # (live) collection id; that would hide a misconfiguration.
+            raise FaceCollectionMissingError(
+                f"Rekognition collection {SETTINGS.collection_id!r} does not "
+                "exist. Set TAM_REKOGNITION_COLLECTION_ID to create one."
+            ) from error
+        logger.warning(
+            "CREATING Rekognition collection %r because it does not exist "
+            "and TAM_REKOGNITION_COLLECTION_ID is set explicitly.",
+            SETTINGS.collection_id
+        )
+        client.create_collection(CollectionId=SETTINGS.collection_id)
+        result = call()
+
+    return [record["Face"]["FaceId"] for record in result.get("FaceRecords", [])]
+
+
+def index_event_photo(photo_id: int) -> list[str]:
+    """Index one authorized photo and return the Rekognition face ids."""
+    with _connect() as connection:
+        photo = connection.execute(
+            f"""
+            SELECT p.s3_bucket, p.s3_key
+            FROM photos p
+            JOIN photo_face_authorizations a ON a.photo_id = p.id
+            WHERE p.id = ? AND {_AUTHORIZED_PHOTO_SQL}
+            """,
+            (photo_id, SETTINGS.event_id)
         ).fetchone()
 
     if photo is None:
-        raise PermissionError(
-            "Photo is not authorized for facial indexing."
-        )
+        raise PermissionError("Photo is not authorized for facial indexing.")
 
-    event_id, bucket, s3_key = photo
-
-    if event_id != "tam-diwali-2026":
-        raise PermissionError("Wrong TAM event.")
-
-    if bucket != "tam-smart-event-photos" or not s3_key:
-        raise ValueError("Invalid TAM S3 reference.")
-
-    # Prevent indexing a photograph that already has
-    # registered face records in this collection.
-    with sqlite3.connect(DB_PATH) as connection:
-        existing = connection.execute(
-            """
-            SELECT COUNT(*)
-            FROM photo_faces
-            WHERE photo_id = ?
-              AND collection_id = ?
-            """,
-            (photo_id, TAM_COLLECTION_ID)
-        ).fetchone()[0]
-
-    if existing > 0:
-        raise ValueError(
-            "This photograph already has indexed faces."
-        )
-
-    client = get_tam_rekognition_client()
-
-    
-    result = client.index_faces(
-        CollectionId=TAM_COLLECTION_ID,
-        Image={
-            "S3Object": {
-                "Bucket": bucket,
-                "Name": s3_key
-            }
-        },
-        ExternalImageId=f"tam_photo_{photo_id}",
-        DetectionAttributes=[],
-        MaxFaces=100,
-        QualityFilter="AUTO"
-    )
+    bucket, s3_key = photo
+    return _index_faces(get_tam_rekognition_client(), bucket, s3_key, photo_id)
 
 
-    return [
-        record["Face"]["FaceId"]
-        for record in result.get("FaceRecords", [])
-    ]
+def register_photo_index_job(photo_id: int) -> dict:
+    """Queue an authorized photo for indexing (idempotent).
 
-
-
-def save_indexed_faces(photo_id: int, face_ids: list[str]):
+    A previously failed job is reset to pending so it can be retried.
     """
-    Link previously indexed Rekognition faces
-    to an existing TAM photograph in SQLite.
-    """
-
-    if not face_ids:
-        return 0
-
-    if len(face_ids) != len(set(face_ids)):
-        raise ValueError("Duplicate face IDs provided.")
-
-    with sqlite3.connect(DB_PATH) as connection:
-        connection.execute("PRAGMA foreign_keys = ON")
-
-        photo = connection.execute(
-            """
-            SELECT event_id, s3_bucket, s3_key
-            FROM photos
-            WHERE id = ?
-              AND status = 'available'
-            """,
-            (photo_id,)
-        ).fetchone()
-
-        if photo is None:
-            raise ValueError("Photo not found or unavailable.")
-
-        event_id, bucket, s3_key = photo
-
-        if event_id != "tam-diwali-2026":
-            raise ValueError("Wrong event.")
-
-        if bucket != "tam-smart-event-photos" or not s3_key:
-            raise ValueError("Photo has no valid TAM S3 reference.")
-
-        for face_id in face_ids:
-            if not face_id:
-                raise ValueError("Empty face ID.")
-
-            connection.execute(
-                """
-                INSERT OR IGNORE INTO photo_faces (
-                    photo_id,
-                    event_id,
-                    collection_id,
-                    rekognition_face_id
-                )
-                VALUES (?, ?, ?, ?)
-                """,
-                (
-                    photo_id,
-                    event_id,
-                    TAM_COLLECTION_ID,
-                    face_id
-                )
-            )
-
-        connection.commit()
-
-        return len(face_ids)
-
-
-def register_photo_index_job(photo_id: int):
-    """
-    Register one photo for face indexing.
-
-    Requires an authorized photo and consent reference.
-    Does not contact AWS or index any faces.
-    """
-    with sqlite3.connect(DB_PATH, timeout=10) as connection:
-        connection.execute("PRAGMA foreign_keys = ON")
+    with _connect() as connection:
         connection.execute("BEGIN IMMEDIATE")
-
         photo = connection.execute(
-            """
+            f"""
             SELECT p.id
             FROM photos p
-            JOIN photo_face_authorizations a
-                ON a.photo_id = p.id
-            WHERE p.id = ?
-              AND p.event_id = 'tam-diwali-2026'
-              AND p.status = 'available'
-              AND p.s3_bucket = 'tam-smart-event-photos'
-              AND p.s3_key IS NOT NULL
-              AND a.authorized = 1
-              AND a.consent_reference IS NOT NULL
-              AND TRIM(a.consent_reference) != ''
+            JOIN photo_face_authorizations a ON a.photo_id = p.id
+            WHERE p.id = ? AND {_AUTHORIZED_PHOTO_SQL}
             """,
-            (photo_id,)
+            (photo_id, SETTINGS.event_id)
         ).fetchone()
-
         if photo is None:
-            raise PermissionError(
-                "Photo is not authorized for facial indexing."
-            )
+            connection.rollback()
+            raise PermissionError("Photo is not authorized for facial indexing.")
 
         connection.execute(
             """
-            INSERT OR IGNORE INTO photo_index_jobs (
-                photo_id,
-                collection_id,
-                status
-            )
+            INSERT INTO photo_index_jobs (photo_id, collection_id, status)
             VALUES (?, ?, 'pending')
+            ON CONFLICT(photo_id, collection_id) DO UPDATE SET
+                status = 'pending', error_message = NULL
+            WHERE photo_index_jobs.status = 'failed'
             """,
-            (photo_id, TAM_COLLECTION_ID)
+            (photo_id, SETTINGS.collection_id)
         )
-
         job = connection.execute(
-            """
-            SELECT id, status
-            FROM photo_index_jobs
-            WHERE photo_id = ?
-              AND collection_id = ?
-            """,
-            (photo_id, TAM_COLLECTION_ID)
+            "SELECT id, status FROM photo_index_jobs "
+            "WHERE photo_id = ? AND collection_id = ?",
+            (photo_id, SETTINGS.collection_id)
         ).fetchone()
 
-        connection.commit()
-
-    return {
-        "job_id": job[0],
-        "status": job[1]
-    }
+    return {"job_id": job[0], "status": job[1]}
 
 
-def claim_photo_index_job(photo_id: int):
-    """
-    Atomically claim one authorized, pending indexing job.
-
-    Returns True if this worker claimed the job.
-    Returns False if the job is not pending or does not exist.
-    Does not contact AWS.
-    """
-    with sqlite3.connect(DB_PATH, timeout=10) as connection:
+def claim_photo_index_job(photo_id: int) -> bool:
+    """Atomically move a pending job to processing. True if claimed."""
+    with _connect() as connection:
         connection.execute("BEGIN IMMEDIATE")
-
         cursor = connection.execute(
-            """
+            f"""
             UPDATE photo_index_jobs
             SET status = 'processing',
                 attempt_count = attempt_count + 1,
@@ -271,214 +185,131 @@ def claim_photo_index_job(photo_id: int):
               AND EXISTS (
                   SELECT 1
                   FROM photos p
-                  JOIN photo_face_authorizations a
-                    ON a.photo_id = p.id
+                  JOIN photo_face_authorizations a ON a.photo_id = p.id
                   WHERE p.id = photo_index_jobs.photo_id
-                    AND p.event_id = 'tam-diwali-2026'
-                    AND p.status = 'available'
-                    AND p.s3_bucket = 'tam-smart-event-photos'
-                    AND p.s3_key IS NOT NULL
-                    AND a.authorized = 1
-                    AND a.consent_reference IS NOT NULL
-                    AND TRIM(a.consent_reference) != ''
+                    AND {_AUTHORIZED_PHOTO_SQL}
               )
             """,
-            (photo_id, TAM_COLLECTION_ID)
+            (photo_id, SETTINGS.collection_id, SETTINGS.event_id)
+        )
+        return cursor.rowcount == 1
+
+
+def _mark_job_failed(photo_id: int, message: str) -> None:
+    with _connect() as connection:
+        connection.execute(
+            """
+            UPDATE photo_index_jobs
+            SET status = 'failed', error_message = ?
+            WHERE photo_id = ? AND collection_id = ? AND status = 'processing'
+            """,
+            (message[:500], photo_id, SETTINGS.collection_id)
         )
 
-        claimed = cursor.rowcount == 1
-        connection.commit()
 
-    return claimed
+def process_photo_index_job(photo_id: int) -> dict:
+    """Index a claimed job's photo and store its faces.
 
-
-def process_photo_index_job(photo_id: int):
+    Failures mark the job 'failed' (with the error) instead of leaving it
+    stuck in 'processing'. Retrying is safe: a re-index only adds extra
+    face records that point at the same photo.
     """
-    Process one previously registered and authorized job.
-
-    An interrupted or failed job is not automatically retried.
-    This prevents accidental duplicate indexing in AWS.
-    """
-
     if not claim_photo_index_job(photo_id):
-        return {
-            "status": "not_claimed",
-            "face_count": 0
-        }
+        return {"status": "not_claimed", "face_count": 0}
 
-    # The job is now marked 'processing'.
-    # Do not retry it automatically if an error occurs.
     try:
         face_ids = index_event_photo(photo_id)
-
-        with sqlite3.connect(DB_PATH, timeout=10) as connection:
-            connection.execute("PRAGMA foreign_keys = ON")
+        with _connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-
-            job = connection.execute(
-                """
-                SELECT status
-                FROM photo_index_jobs
-                WHERE photo_id = ?
-                  AND collection_id = ?
-                """,
-                (photo_id, TAM_COLLECTION_ID)
-            ).fetchone()
-
-            if job is None or job[0] != "processing":
-                raise RuntimeError("Indexing job state changed.")
-
-            # Store every detected face.
             for face_id in face_ids:
                 connection.execute(
                     """
-                    INSERT INTO photo_faces (
-                        photo_id,
-                        event_id,
-                        collection_id,
-                        rekognition_face_id
-                    )
+                    INSERT OR IGNORE INTO photo_faces
+                        (photo_id, event_id, collection_id, rekognition_face_id)
                     VALUES (?, ?, ?, ?)
                     """,
-                    (
-                        photo_id,
-                        "tam-diwali-2026",
-                        TAM_COLLECTION_ID,
-                        face_id
-                    )
+                    (photo_id, SETTINGS.event_id, SETTINGS.collection_id, face_id)
                 )
-
-            # Complete the job even if zero faces were found.
             connection.execute(
                 """
                 UPDATE photo_index_jobs
-                SET status = 'completed',
-                    face_count = ?,
-                    completed_at = CURRENT_TIMESTAMP,
-                    error_message = NULL
-                WHERE photo_id = ?
-                  AND collection_id = ?
-                  AND status = 'processing'
+                SET status = 'completed', face_count = ?,
+                    completed_at = CURRENT_TIMESTAMP, error_message = NULL
+                WHERE photo_id = ? AND collection_id = ? AND status = 'processing'
                 """,
-                (
-                    len(face_ids),
-                    photo_id,
-                    TAM_COLLECTION_ID
-                )
+                (len(face_ids), photo_id, SETTINGS.collection_id)
             )
-
-            connection.commit()
-
-        return {
-            "status": "completed",
-            "face_count": len(face_ids)
-        }
-
-    except Exception:
-        # AWS might already have indexed faces.
-        # Leave the job in 'processing' for manual
-        # investigation instead of automatically retrying.
-        with sqlite3.connect(DB_PATH) as connection:
-            connection.execute(
-                """
-                UPDATE photo_index_jobs
-                SET error_message = ?
-                WHERE photo_id = ?
-                  AND collection_id = ?
-                  AND status = 'processing'
-                """,
-                (
-                    "Indexing interrupted; reconciliation required",
-                    photo_id,
-                    TAM_COLLECTION_ID
-                )
-            )
-            connection.commit()
-
+    except (ClientError, BotoCoreError, FaceCollectionMissingError,
+            PermissionError, sqlite3.Error) as error:
+        logger.exception("Face indexing failed for photo %s", photo_id)
+        _mark_job_failed(photo_id, f"{type(error).__name__}: {error}")
         raise
 
+    logger.info("Indexed photo %s: %d face(s)", photo_id, len(face_ids))
+    return {"status": "completed", "face_count": len(face_ids)}
 
-def find_matching_event_photos(selfie_bytes: bytes):
-    """
-    Search for authorized TAM event photos using one selfie.
-    Returns matched photo IDs and similarity scores.
-    Does not save or index the selfie.
-    """
-    from io import BytesIO
-    from PIL import Image, ImageOps
 
-    if len(selfie_bytes) > 20 * 1024 * 1024:
+def index_photo_now(photo_id: int) -> dict:
+    """Queue and process one authorized photo. Used after upload/authorize."""
+    register_photo_index_job(photo_id)
+    return process_photo_index_job(photo_id)
+
+
+def _prepare_selfie(selfie_bytes: bytes) -> bytes:
+    if len(selfie_bytes) > MAX_SELFIE_BYTES:
         raise ValueError("Selfie exceeds the upload limit.")
-
     try:
         with Image.open(BytesIO(selfie_bytes)) as image:
             image = ImageOps.exif_transpose(image).convert("RGB")
             image.thumbnail((1600, 1600))
-
             output = BytesIO()
             image.save(output, format="JPEG", quality=85)
-            optimized = output.getvalue()
-    except Exception as exc:
-        raise ValueError("Invalid selfie image.") from exc
+            return output.getvalue()
+    except (UnidentifiedImageError, OSError) as error:
+        raise ValueError("Invalid selfie image.") from error
 
+
+def find_matching_event_photos(selfie_bytes: bytes) -> list[dict]:
+    """Return authorized, indexed photos matching the single face in a selfie.
+
+    The selfie is neither stored nor indexed.
+    """
+    optimized = _prepare_selfie(selfie_bytes)
     client = get_tam_rekognition_client()
 
-    detected = client.detect_faces(
-        Image={"Bytes": optimized},
-        Attributes=["DEFAULT"]
-    )
-
+    detected = client.detect_faces(Image={"Bytes": optimized}, Attributes=["DEFAULT"])
     if len(detected.get("FaceDetails", [])) != 1:
         raise ValueError("Please take a selfie showing only one face.")
 
     result = client.search_faces_by_image(
-        CollectionId=TAM_COLLECTION_ID,
+        CollectionId=SETTINGS.collection_id,
         Image={"Bytes": optimized},
-        FaceMatchThreshold=95,
+        FaceMatchThreshold=FACE_MATCH_THRESHOLD,
         MaxFaces=20
     )
 
-    matches = []
-
-    with sqlite3.connect(DB_PATH) as connection:
+    best: dict[int, float] = {}
+    with _connect() as connection:
         for match in result.get("FaceMatches", []):
-            face_id = match["Face"]["FaceId"]
-
             row = connection.execute(
-                """
+                f"""
                 SELECT p.id
                 FROM photo_faces f
-                JOIN photos p
-                  ON p.id = f.photo_id
-                JOIN photo_face_authorizations a
-                  ON a.photo_id = p.id
+                JOIN photos p ON p.id = f.photo_id
+                JOIN photo_face_authorizations a ON a.photo_id = p.id
                 JOIN photo_index_jobs j
-                  ON j.photo_id = p.id
-                 AND j.collection_id = f.collection_id
+                  ON j.photo_id = p.id AND j.collection_id = f.collection_id
                 WHERE f.rekognition_face_id = ?
                   AND f.event_id = ?
                   AND f.collection_id = ?
-                  AND p.event_id = ?
-                  AND p.status = 'available'
-                  AND p.s3_bucket = 'tam-smart-event-photos'
-                  AND p.s3_key IS NOT NULL
-                  AND a.authorized = 1
-                  AND a.consent_reference IS NOT NULL
-                  AND TRIM(a.consent_reference) != ''
                   AND j.status = 'completed'
+                  AND {_AUTHORIZED_PHOTO_SQL}
                 """,
-                (
-                    face_id,
-                    "tam-diwali-2026",
-                    TAM_COLLECTION_ID,
-                    "tam-diwali-2026"
-                )
+                (match["Face"]["FaceId"], SETTINGS.event_id,
+                 SETTINGS.collection_id, SETTINGS.event_id)
             ).fetchone()
-
             if row:
-                matches.append({
-                    "photo_id": row[0],
-                    "similarity": round(match["Similarity"], 2)
-                })
+                similarity = round(match["Similarity"], 2)
+                best[row[0]] = max(similarity, best.get(row[0], 0))
 
-    return matches
+    return [{"photo_id": pid, "similarity": sim} for pid, sim in sorted(best.items())]

@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from database import DB_PATH
+from settings import SETTINGS
 from gallery_routes import (
     get_gallery_viewer,
     is_gallery_enabled,
@@ -22,7 +23,7 @@ from gallery_routes import (
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
-EVENT_ID = "tam-diwali-2026"
+EVENT_ID = SETTINGS.event_id
 
 
 @router.get("/gallery/register", response_class=HTMLResponse)

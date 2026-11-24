@@ -9,6 +9,8 @@ This module does not enable the gallery or modify photographs.
 
 import sqlite3
 
+from settings import SETTINGS
+
 from fastapi import APIRouter, HTTPException, Request
 
 from database import DB_PATH
@@ -88,7 +90,7 @@ def gallery_admin_status(request: Request):
 
     require_gallery_super_admin(request, DB_PATH)
 
-    event_id = "tam-diwali-2026"
+    event_id = SETTINGS.event_id
 
     with sqlite3.connect(DB_PATH, timeout=10) as connection:
 
@@ -229,7 +231,7 @@ def set_gallery_access_code(
             detail="Access code must contain 12–128 characters",
         )
 
-    event_id = "tam-diwali-2026"
+    event_id = SETTINGS.event_id
 
     with sqlite3.connect(DB_PATH, timeout=10) as connection:
         cursor = connection.execute(
@@ -300,7 +302,7 @@ def enable_event_gallery(
             detail="Explicit ENABLE confirmation required",
         )
 
-    event_id = "tam-diwali-2026"
+    event_id = SETTINGS.event_id
 
 
     # TAM-GALLERY-ENABLE-HASH-VALIDATION-V2
@@ -404,7 +406,7 @@ def disable_event_gallery(
             detail="Explicit DISABLE confirmation required",
         )
 
-    event_id = "tam-diwali-2026"
+    event_id = SETTINGS.event_id
 
     with sqlite3.connect(DB_PATH, timeout=10) as connection:
         cursor = connection.execute(
@@ -481,7 +483,7 @@ def approve_gallery_photo(
             detail="Invalid photograph ID",
         )
 
-    event_id = "tam-diwali-2026"
+    event_id = SETTINGS.event_id
 
     with sqlite3.connect(DB_PATH, timeout=10) as connection:
 
@@ -564,7 +566,7 @@ def revoke_gallery_photo(
             detail="Invalid photograph ID",
         )
 
-    event_id = "tam-diwali-2026"
+    event_id = SETTINGS.event_id
 
     with sqlite3.connect(DB_PATH, timeout=10) as connection:
         cursor = connection.execute(
@@ -626,7 +628,7 @@ def list_gallery_review_photos(
             detail="Invalid page number",
         )
 
-    event_id = "tam-diwali-2026"
+    event_id = SETTINGS.event_id
     page_size = 24
     offset = (page - 1) * page_size
 
@@ -713,7 +715,7 @@ def admin_gallery_photo_thumbnail(
     from aws_config import get_tam_s3_client
     from photo_watermark import create_guest_thumbnail
 
-    event_id = "tam-diwali-2026"
+    event_id = SETTINGS.event_id
 
     # Initial authorization.
     admin_id = require_gallery_super_admin(

@@ -18,6 +18,8 @@ The gallery routes are not registered with FastAPI yet.
 
 import sqlite3
 
+from settings import SETTINGS
+
 from fastapi import APIRouter
 
 router = APIRouter()
@@ -77,7 +79,7 @@ def list_gallery_photos(request: __import__("fastapi").Request, page: int = 1):
     from fastapi import HTTPException
     from database import DB_PATH
 
-    event_id = "tam-diwali-2026"
+    event_id = SETTINGS.event_id
 
     # Accept active contributors or attendees with valid gallery sessions.
     viewer = get_gallery_viewer(
@@ -149,7 +151,7 @@ def gallery_photo_thumbnail(
     from aws_config import get_tam_s3_client
     from photo_watermark import create_guest_thumbnail
 
-    event_id = "tam-diwali-2026"
+    event_id = SETTINGS.event_id
 
     # Allow approved contributors and authorized gallery attendees.
     viewer = get_gallery_viewer(
@@ -254,7 +256,7 @@ def gallery_photo_download(
     from aws_config import get_tam_s3_client
     from photo_watermark import add_contributor_watermark
 
-    event_id = "tam-diwali-2026"
+    event_id = SETTINGS.event_id
 
     # Accept contributors and attendees with valid gallery sessions.
     viewer = get_gallery_viewer(
@@ -386,7 +388,7 @@ def register_gallery_guest(
         GALLERY_SESSION_DURATION,
     )
 
-    event_id = "tam-diwali-2026"
+    event_id = SETTINGS.event_id
 
     if not is_gallery_enabled(DB_PATH, event_id):
         raise HTTPException(403, "Event gallery is disabled")
