@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="theme-color" content="#173b76">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TAM | Contributor Registration</title>
@@ -299,6 +303,8 @@ body > .card {
 <link rel="stylesheet"
       href="/static/css/tam-exact-border.css?v=1">
 
+<!-- TAM-PWA-REGISTRATION-V1 -->
+<script src="/static/tam-pwa-register.js" defer></script>
 </head>
 
 <body>
@@ -402,6 +408,10 @@ body > .card {
 
                 if (response.ok) {
                     form.hidden = true;
+                    if (typeof window.tamBeginApprovalMonitoring === "function") {
+                        window.tamBeginApprovalMonitoring();
+                    }
+                    // TAM-DIRECT-APPROVAL-MONITOR-V1
 
                     // TAM-REGISTRATION-NAME-LOGIN-MESSAGE-V1
                     message.textContent =
@@ -423,5 +433,126 @@ body > .card {
             }
         });
     </script>
+
+<!-- TAM-CONTRIBUTOR-APPROVED-POPUP-V1 -->
+<div id="tamContributorApprovedPopup"
+     role="alertdialog"
+     aria-labelledby="tamContributorApprovedTitle"
+     aria-modal="true"
+     style="display:none; position:fixed; inset:0;
+            background:rgba(0,0,0,.6); z-index:9999;
+            align-items:center; justify-content:center; padding:20px;">
+
+  <div style="background:#fffaf0; border:2px solid #c89b3c;
+              border-radius:18px; padding:28px; width:100%;
+              max-width:420px; text-align:center;
+              box-shadow:0 10px 35px rgba(0,0,0,.3);">
+
+    <h2 id="tamContributorApprovedTitle" style="color:#286b39;">
+      ✅ Your Request Has Been Approved!
+    </h2>
+
+    <p>
+      Congratulations! Your TAM Diwali 2026 contributor
+      registration has been approved.
+    </p>
+
+    <p>You can now log in to your contributor dashboard.</p>
+
+    <a href="/contributor/login"
+       style="display:inline-block; padding:12px 22px;
+              background:#8b3a3a; color:white; border-radius:8px;
+              text-decoration:none; margin-top:12px;">
+      Login Now
+    </a>
+
+  </div>
+</div>
+
+<script>
+(() => {
+    const popup = document.getElementById(
+        "tamContributorApprovedPopup"
+    );
+
+    const form = document.getElementById("registrationForm");
+
+    let approvalCheckTimer = null;
+    let approvalPopupShown = false;
+
+
+    // TAM-APPROVAL-MONITOR-V2
+    let checking = false;
+
+    function stopApprovalMonitoring() {
+        if (approvalCheckTimer !== null) {
+            clearInterval(approvalCheckTimer);
+            approvalCheckTimer = null;
+        }
+    }
+
+    async function checkContributorApproval() {
+        if (approvalPopupShown || checking) return null;
+
+        checking = true;
+
+        try {
+            const response = await fetch(
+                "/contributor/approval-status",
+                {
+                    credentials: "same-origin",
+                    cache: "no-store"
+                }
+            );
+
+            if (response.status === 401 ||
+                response.status === 403) {
+                stopApprovalMonitoring();
+                return "invalid";
+            }
+
+            if (!response.ok) return "error";
+
+            const result = await response.json();
+
+            if (result.status === "approved") {
+                approvalPopupShown = true;
+                popup.style.display = "flex";
+                stopApprovalMonitoring();
+            }
+
+            return result.status;
+
+        } catch (error) {
+            console.error("Approval status check failed.");
+            return "error";
+        } finally {
+            checking = false;
+        }
+    }
+
+    async function beginApprovalMonitoring() {
+        if (approvalPopupShown ||
+            approvalCheckTimer !== null) return;
+
+        const status = await checkContributorApproval();
+
+        if (status !== "pending") return;
+
+        approvalCheckTimer = setInterval(
+            checkContributorApproval,
+            10000
+        );
+    }
+
+    window.tamBeginApprovalMonitoring = beginApprovalMonitoring;
+
+    // Check once when the registration page opens.
+    // Poll only when a valid pending registration exists.
+    beginApprovalMonitoring();
+
+})();
+</script>
+
 </body>
 </html>

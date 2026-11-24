@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "TAM Smart Photos",
+  "short_name": "TAM Photos",
+  "description": "Official TAM event photo sharing and contributor management.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#173b76",
+  "icons": [
+    {
+      "src": "/static/icons/tam-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/tam-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

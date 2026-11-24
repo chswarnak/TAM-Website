@@ -31,3 +31,46 @@ tam-before-*/
 
 # Session secrets
 .session_secret
+
+# TAM Web Push private keys
+backend/.push-secrets/
+
+
+# TAM-GITHUB-SAFETY-RULES-V1
+
+# Local backup and historical versions
+*.before-*
+*.backup-*
+*.bak
+*.bak.*
+*.old
+*.orig
+*~
+**/tam-*-backup-*/
+**/tam-*-backups/
+
+# Database files and SQLite temporary files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+**/.push-secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Python runtime files
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local diagnostic files
+*.log

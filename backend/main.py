@@ -36,6 +36,38 @@ load_dotenv()
 
 app = FastAPI()
 
+
+# TAM-CONTRIBUTOR-CONSENT-ROUTER-V1
+from contributor_consent_routes import (
+    router as contributor_consent_router
+)
+app.include_router(contributor_consent_router)
+
+
+
+# TAM-WEBPUSH-ROUTER-V1
+# Web Push subscription and notification API.
+from push_routes import router as push_router
+app.include_router(push_router)
+
+
+# TAM-PWA-SERVICE-WORKER-V1
+# Serve the service worker from the website root.
+# This allows it to operate across Admin and contributor pages.
+# No private photos or authenticated responses are cached.
+@app.get("/tam-sw.js", include_in_schema=False)
+async def tam_pwa_service_worker():
+    from fastapi.responses import FileResponse
+
+    return FileResponse(
+        "static/tam-sw.js",
+        media_type="text/javascript",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+    )
+
+
 # TAM shared static assets (CSS, JavaScript, sound effects).
 app.mount(
     "/static",
@@ -51,6 +83,10 @@ from gallery_routes import router as gallery_api_router
 
 app.include_router(gallery_pages_router)
 app.include_router(gallery_api_router)
+
+# TAM-FACIAL-INDEXING-ADMIN-ROUTER-V1
+from facial_indexing_admin import router as facial_indexing_admin_router
+app.include_router(facial_indexing_admin_router)
 
 
 
@@ -522,7 +558,7 @@ async def upload_photo(
 
 
 @app.post("/register")
-def register_contributor(data: ContributorRegistration):
+def register_contributor(data: ContributorRegistration, request: Request):
     name = data.name.strip()
     import re
 
@@ -546,6 +582,16 @@ def register_contributor(data: ContributorRegistration):
             status_code=400,
             detail="Name and mobile number are required"
         )
+
+    # Generate notification token before starting the transaction.
+    import hashlib
+    import time
+    from fastapi.responses import JSONResponse
+
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    now = int(time.time())
+    expires_at = now + 86400
 
     # TAM-UNIQUE-CONTRIBUTOR-NAME-V1
     # Serialize registration writes to prevent concurrent duplicates.
@@ -585,13 +631,87 @@ def register_contributor(data: ContributorRegistration):
         if cursor.rowcount != 1:
             raise HTTPException(409, "An account already uses this email for this event.")
         contributor_id = cursor.lastrowid
+
+        # TAM-ATOMIC-CONTRIBUTOR-REGISTRATION-V1
+        connection.execute(
+            """
+            INSERT INTO contributor_registration_tokens
+                (token_hash, contributor_id, created_at, expires_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (token_hash, contributor_id, now, expires_at)
+        )
+
         connection.commit()
 
-    return {
+    response = JSONResponse({
         "message": "Registration submitted successfully",
         "contributor_id": contributor_id,
         "event_id": EVENT_ID,
         "status": "pending_approval"
+    })
+
+    response.set_cookie(
+        key="tam_contributor_registration",
+        value=token,
+        max_age=86400,
+        httponly=True,
+        secure=os.environ.get("TAM_PRODUCTION") == "1",
+        samesite="lax",
+        path="/"
+    )
+
+    return response
+
+
+
+# TAM-CONTRIBUTOR-APPROVAL-STATUS-V1
+@app.get("/contributor/approval-status")
+def contributor_approval_status(request: Request):
+    import hashlib
+    import time
+
+    token = request.cookies.get("tam_contributor_registration")
+
+    if not token:
+        raise HTTPException(401, "Registration session required")
+
+    token_hash = hashlib.sha256(
+        token.encode("utf-8")
+    ).hexdigest()
+
+    now = int(time.time())
+
+    with sqlite3.connect(DB_PATH) as connection:
+        connection.row_factory = sqlite3.Row
+
+        contributor = connection.execute(
+            """
+            SELECT c.id, c.name, c.approved
+            FROM contributor_registration_tokens t
+            JOIN contributors c
+              ON c.id = t.contributor_id
+            WHERE t.token_hash = ?
+              AND t.expires_at > ?
+              AND t.revoked_at IS NULL
+              AND c.event_id = ?
+              AND c.active = 1
+              AND c.deleted_at IS NULL
+            """,
+            (token_hash, now, EVENT_ID)
+        ).fetchone()
+
+    if contributor is None:
+        raise HTTPException(
+            401, "Registration session expired or invalid"
+        )
+
+    return {
+        "status": (
+            "approved" if contributor["approved"]
+            else "pending"
+        ),
+        "name": contributor["name"]
     }
 
 
@@ -708,6 +828,16 @@ def approve_contributor(
         )
 
     
+
+    # TAM-APPROVAL-PERMISSION-CHECK-V1
+    if not has_admin_permission(
+        admin_id, "can_approve_contributors"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Contributor approval permission required"
+        )
+
     # Verify the request belongs to the current login session.
     csrf_nonce = request.session.get("csrf_nonce", "")
 
@@ -798,6 +928,59 @@ def list_contributors(
         ]
     }
 
+
+
+
+# TAM-ADMIN-PENDING-NOTIFICATIONS-V1
+@app.get("/admin/notifications/pending-contributors")
+def admin_pending_contributor_notifications(request: Request):
+    admin_id = request.session.get("admin_id")
+
+    if admin_id is None:
+        raise HTTPException(401, "Administrator login required")
+
+    if not has_admin_permission(
+        admin_id, "can_approve_contributors"
+    ):
+        raise HTTPException(403, "Contributor approval permission required")
+
+    with sqlite3.connect(DB_PATH) as connection:
+        connection.row_factory = sqlite3.Row
+
+        admin = connection.execute(
+            """
+            SELECT id FROM admins
+            WHERE id = ?
+              AND active = 1
+              AND deleted_at IS NULL
+              AND must_change_password = 0
+            """,
+            (admin_id,)
+        ).fetchone()
+
+        if admin is None:
+            raise HTTPException(403, "Active administrator access required")
+
+        rows = connection.execute(
+            """
+            SELECT id, name
+            FROM contributors
+            WHERE event_id = ?
+              AND approved = 0
+              AND active = 1
+              AND deleted_at IS NULL
+            ORDER BY id DESC
+            """,
+            (EVENT_ID,)
+        ).fetchall()
+
+    return {
+        "total_pending": len(rows),
+        "contributors": [
+            {"id": row["id"], "name": row["name"]}
+            for row in rows
+        ]
+    }
 
 
 @app.get("/admin/contributors/pending")
@@ -959,6 +1142,7 @@ async def admin_dashboard(request: Request):
         request=request,
         name="admin_dashboard.html",
         context={
+            "admin_id": admin_id,
             "admin_name": admin[0],
             "admin_role": admin[1],
             "contributors": contributors
@@ -1923,6 +2107,32 @@ def delete_contributor(
     return RedirectResponse(
         url="/admin/contributors/manage",
         status_code=303
+    )
+
+
+
+# TAM-CONTRIBUTOR-CONSENT-PAGE-V1
+@app.get("/contributor/consent", response_class=HTMLResponse)
+async def contributor_consent_page(request: Request):
+    """
+    Display the contributor acknowledgement page.
+
+    This consent is separate from attendee facial-recognition consent.
+    """
+    from contributor_consent_service import verify_contributor_consent
+
+    if verify_contributor_consent(request):
+        return RedirectResponse(
+            url="/contributor/login",
+            status_code=303,
+            headers={"Cache-Control": "no-store"}
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="contributor_consent.html",
+        context={},
+        headers={"Cache-Control": "no-store"}
     )
 
 
@@ -3204,11 +3414,15 @@ async def require_event_photo_consent(request: Request, call_next):
 
     path = request.url.path
     photo_page = path in {
-        "/contributor/camera", "/contributor/upload", "/contributor/register",
-        "/find-my-photos", "/gallery", "/gallery/register",
+        "/find-my-photos",
+        "/gallery",
+        "/gallery/register",
     }
-    photo_api = path in {"/upload", "/register"} or path.startswith((
-        "/api/gallery/", "/api/find-my-photos/", "/api/guest/photos/",
+
+    photo_api = path.startswith((
+        "/api/gallery/",
+        "/api/find-my-photos/",
+        "/api/guest/photos/",
     ))
 
     if photo_page or photo_api:

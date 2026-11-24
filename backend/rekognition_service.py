@@ -435,7 +435,7 @@ def find_matching_event_photos(selfie_bytes: bytes):
         CollectionId=TAM_COLLECTION_ID,
         Image={"Bytes": optimized},
         FaceMatchThreshold=95,
-        MaxFaces=20
+        MaxFaces=4096
     )
 
     matches = []

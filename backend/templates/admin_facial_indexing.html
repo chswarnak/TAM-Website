@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TAM Facial Indexing Review</title>
+
+    <link rel="stylesheet" href="/static/css/tam-exact-border.css?v=1">
+    <link rel="stylesheet" href="/static/css/tam-admin-festival.css?v=1">
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #fff8ef;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .review-container {
+            max-width: 900px;
+            margin: 30px auto;
+            padding: 30px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.12);
+        }
+
+        h1 {
+            color: #243d6b;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-top: 25px;
+        }
+
+        .stat-card {
+            background: #f4f6fa;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #b8860b;
+        }
+
+        .stat-number {
+            font-size: 30px;
+            font-weight: bold;
+            color: #243d6b;
+        }
+
+        .stat-label {
+            margin-top: 8px;
+            color: #555;
+        }
+
+        .notice {
+            background: #fff3cd;
+            border-left: 5px solid #d39e00;
+            padding: 15px;
+            margin-top: 25px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 25px;
+            text-decoration: none;
+            color: #243d6b;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="review-container tam-exact-border tam-admin-festival">
+
+        <h1>🔐 TAM Facial Indexing Review</h1>
+
+        <p>
+            Review the facial-indexing authorization status
+            of TAM event photographs.
+        </p>
+
+        <div class="stat-grid">
+
+            <div class="stat-card">
+                <div class="stat-number">{{ available_photos }}</div>
+                <div class="stat-label">Available Photographs</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-number">{{ authorized }}</div>
+                <div class="stat-label">Authorized for Indexing</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-number">{{ explicitly_denied }}</div>
+                <div class="stat-label">Indexing Not Authorized</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-number">{{ missing_authorization }}</div>
+                <div class="stat-label">Awaiting Authorization</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-number">{{ completed_jobs }}</div>
+                <div class="stat-label">Completed Indexing Jobs</div>
+            </div>
+
+        </div>
+
+        <div class="notice">
+            <strong>Privacy Notice</strong>
+            <p>
+                This page is for administrative review only.
+                It does not authorize photographs or perform
+                facial recognition.
+            </p>
+            <p>
+                Facial indexing requires appropriate consent
+                and documented authorization.
+            </p>
+        </div>
+
+
+        <!-- TAM-PHOTO-REVIEW-TABLE-V1 -->
+        <section style="margin-top:30px;">
+            <h2 style="color:#243d6b;">
+                Photograph Authorization Review
+            </h2>
+
+            <p>
+                Showing the 25 most recent available photographs.
+                This list is read-only.
+            </p>
+
+            <div style="overflow-x:auto;">
+                <table style="
+                    width:100%;
+                    border-collapse:collapse;
+                    background:white;
+                ">
+                    <thead>
+                        <tr style="background:#243d6b;color:white;">
+                            <th style="padding:12px;text-align:left;">
+                                Photo ID
+                            </th>
+                            <th style="padding:12px;text-align:left;">
+                                Authorization Status
+                            </th>
+                            <th style="padding:12px;text-align:left;">
+                                Indexing Status
+                            </th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for photo in photo_rows %}
+                        <tr style="border-bottom:1px solid #ddd;">
+                            <td style="padding:12px;">
+                                {{ photo.photo_id }}
+                            </td>
+                            <td style="padding:12px;">
+                                {{ photo.authorization_status }}
+                            </td>
+                            <td style="padding:12px;">
+                                {{ photo.indexing_status }}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" style="padding:15px;">
+                                No photographs available for review.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <a class="back-link" href="/admin/dashboard">
+            ← Back to Admin Dashboard
+        </a>
+
+    </main>
+</body>
+</html>

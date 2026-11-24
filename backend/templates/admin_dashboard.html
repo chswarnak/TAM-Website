@@ -2,6 +2,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="theme-color" content="#173b76">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+
     <meta charset="UTF-8">
     <meta name="viewport"
           content="width=device-width, initial-scale=1.0">
@@ -166,6 +170,8 @@
 
 </style>
 
+<!-- TAM-PWA-REGISTRATION-V1 -->
+<script src="/static/tam-pwa-register.js" defer></script>
 </head>
 
 <body>
@@ -187,6 +193,11 @@
 
                 <a href="/admin/aws">
                     ☁️ AWS Management
+                </a>
+
+                <!-- TAM-FACIAL-INDEXING-NAV-V1 -->
+                <a href="/admin/facial-indexing">
+                    🔐 Facial Indexing Review
                 </a>
             {% endif %}
 
@@ -268,5 +279,158 @@
             </tbody>
         </table>
     </div>
+
+<!-- TAM-ADMIN-APPROVAL-POPUP-V1 -->
+<div id="tamApprovalPopup" role="alertdialog"
+     aria-labelledby="tamApprovalTitle"
+     aria-modal="true"
+     style="display:none; position:fixed; inset:0;
+            background:rgba(0,0,0,.55); z-index:9999;
+            align-items:center; justify-content:center; padding:20px;">
+  <div style="background:#fffaf0; border:2px solid #b8860b;
+              border-radius:16px; padding:25px; width:100%;
+              max-width:400px; text-align:center;
+              box-shadow:0 8px 30px rgba(0,0,0,.25);">
+    <h2 id="tamApprovalTitle" style="color:#7b2d26;">
+      🔔 New Contributor Request
+    </h2>
+    <p id="tamApprovalMessage"></p>
+    <a href="/admin/contributors/manage"
+       style="display:inline-block; padding:10px 18px;
+              background:#8b3a3a; color:white; border-radius:8px;
+              text-decoration:none; margin:5px;">
+       Review Request
+    </a>
+    <button type="button" id="tamDismissApproval"
+            style="padding:10px 18px; border-radius:8px;
+                   border:1px solid #8b3a3a; cursor:pointer;">
+      Dismiss
+    </button>
+  </div>
+</div>
+
+<script>
+(() => {
+    const popup = document.getElementById("tamApprovalPopup");
+    const message = document.getElementById("tamApprovalMessage");
+    const dismiss = document.getElementById("tamDismissApproval");
+
+    // TAM-ADMIN-NOTIFICATION-SESSION-V1
+    const adminId = {{ admin_id | tojson }};
+    const storageKey =
+        "tam-admin-seen-contributor-requests-" + adminId;
+    let seen = new Set();
+
+    try {
+        seen = new Set(JSON.parse(
+            sessionStorage.getItem(storageKey) || "[]"
+        ));
+    } catch (_) {}
+
+    dismiss.addEventListener("click", () => {
+        popup.style.display = "none";
+    });
+
+    async function checkPendingContributors() {
+        if (popup.style.display === "flex") return;
+
+        try {
+            const response = await fetch(
+                "/admin/notifications/pending-contributors",
+                { credentials: "same-origin", cache: "no-store" }
+            );
+
+            if (response.status === 401 || response.status === 403) {
+                clearInterval(notificationTimer);
+                return;
+            }
+
+            if (!response.ok) return;
+
+            const data = await response.json();
+            const contributors = data.contributors || [];
+
+            const newRequests = contributors.filter(
+                person => !seen.has(person.id)
+            );
+
+            if (!newRequests.length) return;
+
+            for (const person of newRequests) {
+                seen.add(person.id);
+            }
+
+            try {
+                sessionStorage.setItem(
+                    storageKey, JSON.stringify([...seen])
+                );
+            } catch (_) {}
+
+            message.textContent =
+                newRequests.length === 1
+                ? newRequests[0].name + " is waiting for approval."
+                : newRequests.length + " contributors are waiting for approval.";
+
+            popup.style.display = "flex";
+
+        } catch (error) {
+            console.error("Contributor notification check failed.");
+        }
+    }
+
+    const notificationTimer =
+        setInterval(checkPendingContributors, 10000);
+
+    checkPendingContributors();
+})();
+</script>
+
+
+<!-- TAM-PUSH-ADMIN-BUTTON-V1 -->
+<div id="tam-push-admin-control"
+     style="
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1000;
+        background: #ffffff;
+        border: 1px solid #e5d6a8;
+        border-radius: 12px;
+        padding: 12px;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+        max-width: 260px;
+        text-align: center;
+     ">
+
+    <button
+        id="tam-enable-notifications"
+        type="button"
+        style="
+            background: #8b4513;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 14px;
+            cursor: pointer;
+            font-weight: 600;
+        ">
+        🔔 Enable Notifications
+    </button>
+
+    <div
+        id="tam-push-status"
+        role="status"
+        aria-live="polite"
+        style="
+            margin-top: 8px;
+            font-size: 12px;
+            color: #555;
+        ">
+        Receive new contributor alerts.
+    </div>
+</div>
+
+<script src="/static/tam-push-subscribe.js"></script>
+
 </body>
 </html>

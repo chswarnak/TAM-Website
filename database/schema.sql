@@ -1,8 +1,10 @@
--- TAM Smart Event Photo Sharing System
--- Database schema only; no application records
--- Generated from AWS SQLite database
+-- TAM Smart Photos Database Schema
+-- Schema only: no production records.
+-- Generated from the current AWS production database.
 
--- table: admins
+PRAGMA foreign_keys = ON;
+
+-- TABLE: admins
 CREATE TABLE admins (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -13,7 +15,7 @@ CREATE TABLE admins (
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         , deleted_at TEXT, must_change_password INTEGER NOT NULL DEFAULT 0);
 
--- table: attendee_consents
+-- TABLE: attendee_consents
 CREATE TABLE attendee_consents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             event_id TEXT NOT NULL,
@@ -32,15 +34,42 @@ CREATE TABLE attendee_consents (
                 DEFAULT CURRENT_TIMESTAMP
         , attendee_mobile TEXT);
 
--- table: contributors
+-- TABLE: contributor_consent_acknowledgements
+CREATE TABLE contributor_consent_acknowledgements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            token_hash TEXT NOT NULL UNIQUE,
+
+            consent_version TEXT NOT NULL,
+
+            accepted_at TEXT NOT NULL
+                DEFAULT CURRENT_TIMESTAMP,
+
+            expires_at TEXT NOT NULL,
+
+            revoked_at TEXT
+        );
+
+-- TABLE: contributor_registration_tokens
+CREATE TABLE contributor_registration_tokens (
+            token_hash TEXT PRIMARY KEY,
+            contributor_id INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            revoked_at INTEGER,
+            FOREIGN KEY (contributor_id)
+                REFERENCES contributors(id)
+        );
+
+-- TABLE: contributors
 CREATE TABLE contributors (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             event_id TEXT NOT NULL,
             approved INTEGER DEFAULT 0
-        , mobile_number TEXT, uploads_enabled INTEGER NOT NULL DEFAULT 1, active INTEGER NOT NULL DEFAULT 1, deleted_at TEXT, password_hash TEXT, approved_by_admin_id INTEGER, approved_at TEXT);
+        , mobile_number TEXT, uploads_enabled INTEGER NOT NULL DEFAULT 1, active INTEGER NOT NULL DEFAULT 1, deleted_at TEXT, password_hash TEXT, approved_by_admin_id INTEGER, approved_at TEXT, email TEXT);
 
--- table: events
+-- TABLE: events
 CREATE TABLE events (
             event_id TEXT PRIMARY KEY,
             event_name TEXT NOT NULL,
@@ -50,9 +79,18 @@ CREATE TABLE events (
             timezone TEXT NOT NULL DEFAULT 'America/Toronto',
             status TEXT NOT NULL DEFAULT 'draft',
             retention_hours INTEGER NOT NULL DEFAULT 48
-        );
+        , gallery_enabled INTEGER NOT NULL DEFAULT 0, gallery_access_code_hash TEXT);
 
--- table: guest_consent_flows
+-- TABLE: gallery_downloads
+CREATE TABLE gallery_downloads (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL, media_type TEXT NOT NULL CHECK(media_type IN ("photo", "video")), media_id INTEGER NOT NULL, downloader_type TEXT NOT NULL CHECK(downloader_type IN ("contributor", "attendee", "admin")), downloader_id TEXT NOT NULL, downloaded_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+
+-- TABLE: gallery_guest_sessions
+CREATE TABLE gallery_guest_sessions (token_hash TEXT PRIMARY KEY, event_id TEXT NOT NULL, attendee_name TEXT NOT NULL, attendee_mobile TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);
+
+-- TABLE: gallery_registration_attempts
+CREATE TABLE gallery_registration_attempts (id INTEGER PRIMARY KEY AUTOINCREMENT, client_identifier TEXT NOT NULL, attempted_at INTEGER NOT NULL);
+
+-- TABLE: guest_consent_flows
 CREATE TABLE guest_consent_flows (
                 flow_hash TEXT PRIMARY KEY,
                 event_id TEXT NOT NULL,
@@ -63,7 +101,7 @@ CREATE TABLE guest_consent_flows (
                     REFERENCES attendee_consents(id)
             );
 
--- table: guest_photo_downloads
+-- TABLE: guest_photo_downloads
 CREATE TABLE guest_photo_downloads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             event_id TEXT NOT NULL,
@@ -73,7 +111,7 @@ CREATE TABLE guest_photo_downloads (
             session_token_hash TEXT NOT NULL
         );
 
--- table: guest_search_sessions
+-- TABLE: guest_search_sessions
 CREATE TABLE guest_search_sessions (
                 token_hash TEXT PRIMARY KEY,
                 event_id TEXT NOT NULL,
@@ -82,7 +120,7 @@ CREATE TABLE guest_search_sessions (
                 expires_at INTEGER NOT NULL
             );
 
--- table: guest_session_photos
+-- TABLE: guest_session_photos
 CREATE TABLE guest_session_photos (
                 token_hash TEXT NOT NULL,
                 photo_id INTEGER NOT NULL,
@@ -92,7 +130,7 @@ CREATE TABLE guest_session_photos (
                     ON DELETE CASCADE
             );
 
--- table: organizer_permissions
+-- TABLE: organizer_permissions
 CREATE TABLE organizer_permissions (
             admin_id INTEGER PRIMARY KEY,
             can_approve_contributors INTEGER NOT NULL DEFAULT 0,
@@ -100,7 +138,40 @@ CREATE TABLE organizer_permissions (
             FOREIGN KEY (admin_id) REFERENCES admins(id)
         );
 
--- table: photo_face_authorizations
+-- TABLE: photo_face_authorization_audit
+CREATE TABLE photo_face_authorization_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    photo_id INTEGER NOT NULL,
+
+    administrator_id INTEGER NOT NULL,
+
+    decision TEXT NOT NULL
+        CHECK (decision IN ('authorized', 'denied')),
+
+    evidence_reference TEXT,
+
+    decision_reason TEXT NOT NULL,
+
+    decision_at TEXT NOT NULL
+        DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (photo_id)
+        REFERENCES photos(id),
+
+    FOREIGN KEY (administrator_id)
+        REFERENCES admins(id),
+
+    CHECK (
+        decision != 'authorized'
+        OR (
+            evidence_reference IS NOT NULL
+            AND LENGTH(TRIM(evidence_reference)) > 0
+        )
+    )
+);
+
+-- TABLE: photo_face_authorizations
 CREATE TABLE photo_face_authorizations (
             photo_id INTEGER PRIMARY KEY,
             authorized INTEGER NOT NULL DEFAULT 0
@@ -110,7 +181,7 @@ CREATE TABLE photo_face_authorizations (
             FOREIGN KEY (photo_id) REFERENCES photos(id)
         );
 
--- table: photo_faces
+-- TABLE: photo_faces
 CREATE TABLE photo_faces (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             photo_id INTEGER NOT NULL,
@@ -121,7 +192,7 @@ CREATE TABLE photo_faces (
             FOREIGN KEY (photo_id) REFERENCES photos(id)
         );
 
--- table: photo_index_jobs
+-- TABLE: photo_index_jobs
 CREATE TABLE photo_index_jobs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             photo_id INTEGER NOT NULL,
@@ -143,7 +214,7 @@ CREATE TABLE photo_index_jobs (
             FOREIGN KEY(photo_id) REFERENCES photos(id)
         );
 
--- table: photos
+-- TABLE: photos
 CREATE TABLE photos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             event_id TEXT NOT NULL,
@@ -153,24 +224,83 @@ CREATE TABLE photos (
             status TEXT NOT NULL DEFAULT 'pending',
             uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             reviewed_by_admin_id INTEGER,
-            reviewed_at TEXT, s3_bucket TEXT, s3_key TEXT,
+            reviewed_at TEXT, s3_bucket TEXT, s3_key TEXT, gallery_approved INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (contributor_id)
                 REFERENCES contributors(id)
         );
 
--- index: idx_attendee_consents_event
+-- TABLE: push_subscriptions
+CREATE TABLE push_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            recipient_type TEXT NOT NULL
+                CHECK (recipient_type IN ('admin', 'contributor')),
+
+            recipient_id INTEGER NOT NULL,
+
+            endpoint TEXT NOT NULL UNIQUE,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+
+            created_at TEXT NOT NULL
+                DEFAULT CURRENT_TIMESTAMP,
+
+            updated_at TEXT NOT NULL
+                DEFAULT CURRENT_TIMESTAMP,
+
+            last_success_at TEXT,
+            last_failure_at TEXT,
+
+            active INTEGER NOT NULL DEFAULT 1
+                CHECK (active IN (0, 1))
+        );
+
+-- INDEX: contributors_event_email_unique
+CREATE UNIQUE INDEX contributors_event_email_unique
+        ON contributors(event_id, email COLLATE NOCASE);
+
+-- INDEX: idx_attendee_consents_event
 CREATE INDEX idx_attendee_consents_event
         ON attendee_consents(event_id, accepted_at);
 
--- index: idx_guest_consent_flows_expiry
+-- INDEX: idx_contributor_consent_expiry
+CREATE INDEX idx_contributor_consent_expiry
+        ON contributor_consent_acknowledgements(expires_at);
+
+-- INDEX: idx_contributor_registration_tokens_contributor
+CREATE INDEX idx_contributor_registration_tokens_contributor
+        ON contributor_registration_tokens(contributor_id);
+
+-- INDEX: idx_gallery_guest_sessions_expiry
+CREATE INDEX idx_gallery_guest_sessions_expiry ON gallery_guest_sessions(expires_at);
+
+-- INDEX: idx_gallery_registration_attempts_client_time
+CREATE INDEX idx_gallery_registration_attempts_client_time ON gallery_registration_attempts(client_identifier, attempted_at);
+
+-- INDEX: idx_guest_consent_flows_expiry
 CREATE INDEX idx_guest_consent_flows_expiry
             ON guest_consent_flows(expires_at);
 
--- index: idx_guest_sessions_expiry
+-- INDEX: idx_guest_sessions_expiry
 CREATE INDEX idx_guest_sessions_expiry
             ON guest_search_sessions(expires_at);
 
--- index: idx_photo_faces_event
+-- INDEX: idx_photo_face_authorization_audit_admin
+CREATE INDEX idx_photo_face_authorization_audit_admin
+ON photo_face_authorization_audit(administrator_id);
+
+-- INDEX: idx_photo_face_authorization_audit_photo
+CREATE INDEX idx_photo_face_authorization_audit_photo
+ON photo_face_authorization_audit(photo_id);
+
+-- INDEX: idx_photo_faces_event
 CREATE INDEX idx_photo_faces_event
         ON photo_faces(event_id, collection_id);
 
+-- INDEX: idx_push_subscriptions_recipient
+CREATE INDEX idx_push_subscriptions_recipient
+        ON push_subscriptions (
+            recipient_type,
+            recipient_id,
+            active
+        );

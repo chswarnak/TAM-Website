@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>TAM Contributor Consent</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(
+                135deg,
+                #fff8e7,
+                #fff1d6
+            );
+            color: #432818;
+        }
+
+        .container {
+            max-width: 550px;
+            margin: 45px auto;
+            padding: 28px;
+            background: #ffffff;
+            border: 2px solid #d6a650;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        }
+
+        h1 {
+            text-align: center;
+            color: #8b4513;
+            font-size: 26px;
+        }
+
+        h2 {
+            font-size: 18px;
+            margin-top: 24px;
+        }
+
+        p, li {
+            font-size: 15px;
+            line-height: 1.65;
+        }
+
+        .agreement {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+            padding: 15px;
+            background: #fff8ea;
+            border-radius: 10px;
+        }
+
+        .agreement input {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 20px;
+            padding: 14px;
+            border: none;
+            border-radius: 10px;
+            background: #8b4513;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            background: #b7a99d;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>📸 TAM Smart Photos</h1>
+
+    <h2>Contributor Consent & Acknowledgement</h2>
+
+    <p>
+        Thank you for helping capture memories during
+        TAM Diwali Celebrations 2026.
+    </p>
+
+    <p>
+        Before registering or signing in as a photo contributor,
+        please review the following information.
+    </p>
+
+    <h2>Registration Information</h2>
+
+    <p>
+        TAM collects contributor registration information,
+        including your name and contact details, to manage
+        contributor access and event photo uploads.
+    </p>
+
+    <h2>Photograph Sharing</h2>
+
+    <p>
+        Photographs uploaded by approved contributors may be
+        processed and shared through the TAM Smart Photos
+        event system with authorized attendees.
+    </p>
+
+    <h2>Photograph Retention</h2>
+
+    <p>
+        TAM intends to retain event photographs temporarily,
+        generally for approximately 48 hours after the event,
+        subject to operational and legal requirements.
+    </p>
+
+    <h2>Facial Recognition</h2>
+
+    <p>
+        This contributor acknowledgement does not constitute
+        permission for facial recognition or selfie matching.
+        Any such processing requires separate applicable consent.
+    </p>
+
+    <div class="agreement">
+
+        <input
+            type="checkbox"
+            id="tam-contributor-agree"
+        >
+
+        <label for="tam-contributor-agree">
+            I have read and understood the information above
+            and agree to participate as a TAM photo contributor
+            under these conditions.
+        </label>
+
+    </div>
+
+    <button
+        id="tam-contributor-continue"
+        type="button"
+        disabled
+    >
+        Continue to Contributor Login
+    </button>
+
+</div>
+
+<script>
+const checkbox = document.getElementById(
+    "tam-contributor-agree"
+);
+
+const button = document.getElementById(
+    "tam-contributor-continue"
+);
+
+checkbox.addEventListener("change", function () {
+    button.disabled = !checkbox.checked;
+});
+
+// TAM-CONTRIBUTOR-CONSENT-SUBMIT-V1
+button.addEventListener("click", async function () {
+    if (!checkbox.checked) {
+        return;
+    }
+
+    button.disabled = true;
+    button.textContent = "Recording acknowledgement...";
+
+    try {
+        const response = await fetch(
+            "/api/contributor-consent/accept",
+            {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    agreed: true
+                })
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(
+                "Unable to record your acknowledgement. Please try again."
+            );
+        }
+
+        const result = await response.json();
+
+        if (
+            result.status !== "accepted" &&
+            result.status !== "already_accepted"
+        ) {
+            throw new Error("Unexpected consent response.");
+        }
+
+        window.location.assign("/contributor/login");
+
+    } catch (error) {
+        alert(error.message || "Consent submission failed.");
+
+        button.disabled = false;
+        button.textContent = "Continue to Contributor Login";
+    }
+});
+</script>
+
+</body>
+</html>
