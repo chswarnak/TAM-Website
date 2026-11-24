@@ -83,7 +83,6 @@ def gallery_admin_status(request: Request):
     Return gallery configuration to an authenticated Super Admin.
 
     Read-only:
-    - Never return the access-code hash.
     - Never expose S3 object keys.
     - Never change gallery settings.
     """
@@ -96,8 +95,7 @@ def gallery_admin_status(request: Request):
 
         event = connection.execute(
             """
-            SELECT gallery_enabled,
-                   gallery_access_code_hash
+            SELECT gallery_enabled
             FROM events
             WHERE event_id = ?
             """,
@@ -132,7 +130,6 @@ def gallery_admin_status(request: Request):
     return {
         "event_id": event_id,
         "gallery_enabled": bool(event[0]),
-        "access_code_configured": bool(event[1]),
         "approved_photos": approved,
         "total_photos": total,
     }
@@ -202,68 +199,6 @@ def verify_gallery_admin_csrf(
         )
 
 
-# TAM-GALLERY-ACCESS-CODE-ENDPOINT-V1
-
-@router.post("/admin/gallery/access-code")
-def set_gallery_access_code(
-    request: Request,
-    gallery_access_code: str = __import__("fastapi").Form(...),
-    csrf_token: str = __import__("fastapi").Form(...),
-):
-    """
-    Configure the event gallery access code.
-
-    Super Admin and CSRF verification are mandatory.
-    Never store or return the plaintext access code.
-    Setting the code does not enable gallery sharing.
-    """
-    from fastapi.responses import JSONResponse
-    from gallery_access_code import hash_gallery_access_code
-
-    admin_id = require_gallery_super_admin(request, DB_PATH)
-    verify_gallery_admin_csrf(request, admin_id, csrf_token)
-
-    try:
-        code_hash = hash_gallery_access_code(gallery_access_code)
-    except ValueError:
-        raise HTTPException(
-            status_code=422,
-            detail="Access code must contain 12–128 characters",
-        )
-
-    event_id = SETTINGS.event_id
-
-    with sqlite3.connect(DB_PATH, timeout=10) as connection:
-        cursor = connection.execute(
-            """
-            UPDATE events
-            SET gallery_access_code_hash = ?
-            WHERE event_id = ?
-            """,
-            (code_hash, event_id),
-        )
-
-        if cursor.rowcount != 1:
-            raise HTTPException(
-                status_code=404,
-                detail="Event not found",
-            )
-
-        connection.commit()
-
-    return JSONResponse(
-        content={
-            "success": True,
-            "message": "Gallery access code updated",
-            "gallery_enabled_changed": False,
-        },
-        headers={
-            "Cache-Control": "no-store",
-            "X-Content-Type-Options": "nosniff",
-        },
-    )
-
-
 # TAM-GALLERY-ENABLE-ENDPOINT-V1
 
 @router.post("/admin/gallery/enable")
@@ -279,7 +214,6 @@ def enable_event_gallery(
     - Active Super Admin required.
     - Valid administrator CSRF token required.
     - Explicit confirmation required.
-    - Gallery access code must already be configured.
     - Does not approve any photographs.
     """
 
@@ -305,42 +239,7 @@ def enable_event_gallery(
     event_id = SETTINGS.event_id
 
 
-    # TAM-GALLERY-ENABLE-HASH-VALIDATION-V2
-    from gallery_access_code import (
-        is_valid_gallery_access_code_hash,
-    )
-
     with sqlite3.connect(DB_PATH, timeout=10) as connection:
-
-        # Lock the transaction before checking gallery settings.
-        # This prevents another writer changing the access code
-        # between validation and activation.
-        connection.execute("BEGIN IMMEDIATE")
-
-        event = connection.execute(
-            """
-            SELECT gallery_access_code_hash
-            FROM events
-            WHERE event_id = ?
-            """,
-            (event_id,),
-        ).fetchone()
-
-        if event is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Event not found",
-            )
-
-        if not is_valid_gallery_access_code_hash(event[0]):
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "Gallery cannot be enabled. "
-                    "Configure a valid event access code first."
-                ),
-            )
-
         cursor = connection.execute(
             """
             UPDATE events

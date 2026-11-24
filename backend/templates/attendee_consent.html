@@ -293,36 +293,8 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
         
         <form id="consentForm">
 
-            <label for="attendeeName">
-                <strong>Full Name</strong>
-            </label>
+            <p>Recording consent for <strong>{{ attendee_name }}</strong>.</p>
 
-            <input
-                id="attendeeName"
-                name="attendee_name"
-                type="text"
-                maxlength="150"
-                autocomplete="name"
-                required
-                placeholder="Enter your full name"
-            >
-            <!-- Attendee mobile number -->
-            <label for="attendeeMobile">
-                <strong>Mobile Number</strong>
-            </label>
-
-            <input
-                id="attendeeMobile"
-                name="attendee_mobile"
-                type="tel"
-                maxlength="20"
-                autocomplete="tel"
-                inputmode="tel"
-                required
-                placeholder="Enter your mobile number"
-            >
-
-           
             <!-- Combined TAM photo consent -->
             <p>
                 I understand that TAM will use AWS Rekognition to process
@@ -375,23 +347,9 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             form.addEventListener("submit", async (event) => {
                 event.preventDefault();
 
-                const name = document.getElementById(
-                    "attendeeName"
-                ).value.trim();
-
-                const mobile = document.getElementById(
-                    "attendeeMobile"
-                ).value.trim();
-
                 const selected = document.querySelector(
                     'input[name="photo_consent"]:checked'
                 );
-
-                if (!name || !mobile) {
-                    message.textContent =
-                        "Please enter your full name and mobile number.";
-                    return;
-                }
 
                 if (!selected) {
                     message.textContent =
@@ -406,8 +364,6 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
                 try {
                     const formData = new FormData();
 
-                    formData.append("attendee_name", name);
-                    formData.append("attendee_mobile", mobile);
                     formData.append("photo_consent", selected.value);
 
                     const response = await fetch("/api/attendee-consent", {
@@ -421,7 +377,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 
                     if (!response.ok) {
                         throw new Error(
-                            data.error || "Unable to submit your decision."
+                            data.detail || data.error || "Unable to submit your decision."
                         );
                     }
 

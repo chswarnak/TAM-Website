@@ -256,6 +256,13 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
         <h1>Find My Photos</h1>
 
         <p class="description">
+            Signed in as <strong>{{ attendee_name }}</strong>.
+        </p>
+        <form action="/attendee/logout" method="post" style="margin-bottom:16px;">
+            <button type="submit">Log out</button>
+        </form>
+
+        <p class="description">
             Find photographs of yourself from
             the TAM event using your phone.
         </p>
@@ -376,9 +383,8 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 
     
         <script>
-            // Consent is verified by FastAPI using the
-            // temporary HttpOnly guest consent cookie.
-            // The browser cannot read the cookie directly.
+            // Consent is checked by the server against the
+            // logged-in attendee account.
             let consentVerified = false;
 
 
@@ -705,7 +711,7 @@ async function checkGuestConsent() {
                     }
 
                     if (!response.ok) {
-                        throw new Error(data.error || "Photo search failed.");
+                        throw new Error(data.detail || data.error || "Photo search failed.");
                     }
 
                     const count = data.match_count || 0;

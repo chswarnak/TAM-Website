@@ -13,7 +13,6 @@ Security:
     - Contributors cannot edit or delete gallery photographs.
     - Downloads will be tracked.
 
-The gallery routes are not registered with FastAPI yet.
 """
 
 import sqlite3
@@ -39,35 +38,6 @@ def is_gallery_enabled(db_path: str, event_id: str) -> bool:
         ).fetchone()
 
     return bool(event and event[0] == 1)
-
-
-def get_active_contributor(db_path: str, event_id: str, contributor_id):
-    """
-    Return an approved, active contributor.
-
-    A disabled or soft-deleted contributor must not receive
-    gallery access, even if they have an existing browser session.
-    """
-    if contributor_id is None:
-        return None
-
-    with sqlite3.connect(db_path, timeout=10) as connection:
-        connection.row_factory = sqlite3.Row
-
-        contributor = connection.execute(
-            """
-            SELECT id, name
-            FROM contributors
-            WHERE id = ?
-              AND event_id = ?
-              AND approved = 1
-              AND active = 1
-              AND deleted_at IS NULL
-            """,
-            (contributor_id, event_id),
-        ).fetchone()
-
-    return dict(contributor) if contributor else None
 
 
 @router.get("/api/gallery/photos")
@@ -365,177 +335,32 @@ def gallery_photo_download(
 
 
 @router.post("/api/gallery/guest/register")
-def register_gallery_guest(
-    request: __import__("fastapi").Request,
-    attendee_name: str = __import__("fastapi").Form(...),
-    attendee_mobile: str = __import__("fastapi").Form(...),
-    gallery_access_code: str = __import__("fastapi").Form(...),
-    gallery_acknowledged: bool = __import__("fastapi").Form(False),
-):
-    """
-    Register an attendee for temporary gallery browsing.
+def register_gallery_guest():
+    """Removed: the anonymous access-code gallery registration.
 
-    This is separate from facial-recognition consent.
-    Name and mobile number are self-reported, not verified.
+    Gallery viewers now log in with an approved attendee or contributor
+    account. 410 tells any cached old page that this flow is gone.
     """
-    import re
-
     from fastapi import HTTPException
-    from fastapi.responses import JSONResponse
-    from database import DB_PATH
-    from gallery_sessions import (
-        create_gallery_session,
-        GALLERY_SESSION_DURATION,
+
+    raise HTTPException(
+        status_code=410,
+        detail="Please log in with your approved attendee account to view the gallery.",
     )
-
-    event_id = SETTINGS.event_id
-
-    if not is_gallery_enabled(DB_PATH, event_id):
-        raise HTTPException(403, "Event gallery is disabled")
-
-    # Trust visitor IP headers only from our local Nginx proxy.
-    import ipaddress
-    import os
-    from gallery_rate_limit import check_gallery_registration_limit
-
-    # Nginx overwrites X-Real-IP with the connecting visitor address.
-    # Uvicorn is bound to localhost and cannot be reached directly
-    # through the public EC2 network interface.
-    forwarded_ip = request.headers.get("X-Real-IP", "")
-
-    try:
-        visitor_ip = str(ipaddress.ip_address(forwarded_ip))
-    except ValueError:
-        raise HTTPException(403, "Invalid visitor identification")
-
-    allowed = check_gallery_registration_limit(
-        DB_PATH,
-        visitor_ip,
-        os.environ["SESSION_SECRET"],
-    )
-
-    if not allowed:
-        raise HTTPException(
-            429,
-            "Too many registration attempts. Try again later.",
-        )
-
-    name = attendee_name.strip()
-    mobile = attendee_mobile.strip()
-
-    if not gallery_acknowledged:
-        raise HTTPException(
-            400,
-            "You must acknowledge the event gallery sharing notice",
-        )
-
-    if not 2 <= len(name) <= 100:
-        raise HTTPException(400, "Invalid attendee name")
-
-    if not 7 <= len(mobile) <= 20:
-        raise HTTPException(400, "Invalid mobile number")
-
-    if not re.fullmatch(r"[+0-9() .-]+", mobile):
-        raise HTTPException(400, "Invalid mobile number format")
-
-    # Verify the event access code before creating a session.
-    from gallery_access_code import verify_gallery_access_code
-
-    with sqlite3.connect(DB_PATH, timeout=10) as connection:
-        event = connection.execute(
-            """
-            SELECT gallery_access_code_hash
-            FROM events
-            WHERE event_id = ?
-            """,
-            (event_id,),
-        ).fetchone()
-
-    if event is None or not event[0]:
-        raise HTTPException(403, "Gallery access code not configured")
-
-    if not verify_gallery_access_code(
-        gallery_access_code,
-        event[0],
-    ):
-        raise HTTPException(403, "Invalid gallery access code")
-
-    # Do not overwrite an existing session unless registration succeeds.
-    with sqlite3.connect(DB_PATH, timeout=10) as connection:
-        token = create_gallery_session(
-            connection,
-            event_id,
-            name,
-            mobile,
-        )
-
-    response = JSONResponse({
-        "status": "registered",
-        "message": "Gallery access granted for 30 minutes.",
-        "identity_verified": False,
-    })
-
-    response.set_cookie(
-        key="tam_gallery_session",
-        value=token,
-        max_age=GALLERY_SESSION_DURATION,
-        httponly=True,
-        secure=True,
-        samesite="lax",
-        path="/api/gallery",
-    )
-
-    return response
 
 
 def get_gallery_viewer(request, db_path: str, event_id: str):
+    """The logged-in, approved contributor or attendee viewing the gallery.
+
+    Accounts with a pending password change get no access. db_path and
+    event_id are kept for the existing callers; accounts reads the
+    configured database and event.
     """
-    Identify an authorized gallery viewer.
+    import accounts
 
-    Supports active contributors and registered attendees.
-    Does not perform facial recognition.
-    """
-    from gallery_sessions import validate_gallery_session
-
-    # Existing contributor authentication.
-    contributor_id = request.session.get("contributor_id")
-
-    contributor = get_active_contributor(
-        db_path,
-        event_id,
-        contributor_id,
-    )
-
-    if contributor is not None:
-        return {
-            "type": "contributor",
-            "id": str(contributor["id"]),
-            "name": contributor["name"],
-        }
-
-    # An existing but invalid contributor session must not
-    # fall back to attendee authorization.
-    if contributor_id is not None:
-        return None
-
-    # Separate temporary attendee gallery session.
-    token = request.cookies.get("tam_gallery_session")
-
-    if not token:
-        return None
-
-    with sqlite3.connect(db_path, timeout=10) as connection:
-        attendee = validate_gallery_session(
-            connection,
-            token,
-            event_id,
-        )
-
-    if attendee is None:
-        return None
-
-    return {
-        "type": "attendee",
-        "id": attendee["token_hash"],
-        "name": attendee["attendee_name"],
-    }
+    for kind in ("contributor", "attendee"):
+        account = accounts.session_account(request, kind)
+        if account is not None and not account["must_change_password"]:
+            return {"type": kind, "id": str(account["id"]),
+                    "name": account["display_name"]}
+    return None

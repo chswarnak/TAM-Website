@@ -4,8 +4,6 @@ TAM Smart Event Photo Sharing System.
 
 HTML page routes for the event gallery.
 
-This module does not activate the gallery automatically.
-The main FastAPI application must explicitly include this router.
 """
 
 from fastapi import APIRouter, Request, HTTPException
@@ -26,27 +24,10 @@ templates = Jinja2Templates(directory="templates")
 EVENT_ID = SETTINGS.event_id
 
 
-@router.get("/gallery/register", response_class=HTMLResponse)
-async def gallery_registration_page(request: Request):
-    """
-    Show the registration form only while gallery access is enabled.
-    """
-
-    if not is_gallery_enabled(DB_PATH, EVENT_ID):
-        raise HTTPException(
-            status_code=403,
-            detail="Event gallery is currently unavailable",
-        )
-
-    return templates.TemplateResponse(
-        request=request,
-        name="gallery_register.html",
-        context={},
-        headers={
-            "Cache-Control": "no-store",
-            "X-Content-Type-Options": "nosniff",
-        },
-    )
+@router.get("/gallery/register")
+async def gallery_registration_page():
+    """The anonymous registration form is gone; viewers log in instead."""
+    return RedirectResponse(url="/attendee/login", status_code=303)
 
 
 @router.get("/gallery", response_class=HTMLResponse)
@@ -72,7 +53,7 @@ async def gallery_page(request: Request):
 
     if viewer is None:
         return RedirectResponse(
-            url="/gallery/register",
+            url="/attendee/login",
             status_code=303,
             headers={"Cache-Control": "no-store"},
         )

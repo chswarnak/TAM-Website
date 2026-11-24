@@ -1,15 +1,15 @@
 
-import sqlite3
+"""Biometric consent records for attendee accounts."""
 
-from settings import SETTINGS
+import sqlite3
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+
 from database import DB_PATH
+from settings import SETTINGS
 
 EVENT_ID = SETTINGS.event_id
 CONSENT_VERSION = "1.0"
-
-CONSENT_FORM_STATUS = "development"
 
 # Replace these values with approved TAM privacy details
 # before activating consent collection.
@@ -40,74 +40,62 @@ CONSENT_TEXTS = {
 
 
 def record_attendee_consent(
-    attendee_name,
-    consent_type,
-    attendee_mobile=None
-):
-    """
-    Record an explicitly submitted attendee consent.
-    Preserve existing records and consent functionality.
-    """
-
-    name = " ".join(attendee_name.strip().split())
-
-    if not name or len(name) > 150:
-        raise ValueError("Please enter a valid attendee name.")
-
+    attendee_id: int,
+    attendee_name: str,
+    consent_type: str,
+    attendee_mobile: str | None = None,
+) -> dict:
+    """Record a consent given by a logged-in attendee account."""
     if consent_type not in CONSENT_TEXTS:
         raise ValueError("Invalid consent type.")
 
-    mobile = str(attendee_mobile or "").strip()
-
-    # Accept common Canadian and international phone formats.
-    import re
-
-    if mobile:
-        if not re.fullmatch(r"\+?[0-9 ()-]{7,20}", mobile):
-            raise ValueError("Please enter a valid mobile number.")
-
-        digits = re.sub(r"\D", "", mobile)
-
-        if not 7 <= len(digits) <= 15:
-            raise ValueError("Please enter a valid mobile number.")
-
     accepted_utc = datetime.now(timezone.utc)
-    accepted_local = accepted_utc.astimezone(MONTREAL_TIMEZONE)
-
     with sqlite3.connect(DB_PATH, timeout=10) as connection:
         cursor = connection.execute(
             """
             INSERT INTO attendee_consents (
-                event_id,
-                attendee_name,
-                attendee_mobile,
-                consent_type,
-                consent_version,
-                consent_text,
-                accepted_at
+                event_id, attendee_id, attendee_name, attendee_mobile,
+                consent_type, consent_version, consent_text, accepted_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (
-                EVENT_ID,
-                name,
-                mobile or None,
-                consent_type,
-                CONSENT_VERSION,
-                CONSENT_TEXTS[consent_type],
-                accepted_utc.isoformat()
-            )
+            (EVENT_ID, attendee_id, attendee_name, attendee_mobile,
+             consent_type, CONSENT_VERSION, CONSENT_TEXTS[consent_type],
+             accepted_utc.isoformat())
         )
 
-        consent_id = cursor.lastrowid
-        connection.commit()
-
     return {
-        "consent_id": consent_id,
-        "attendee_name": name,
+        "consent_id": cursor.lastrowid,
         "consent_type": consent_type,
         "accepted_at_utc": accepted_utc.isoformat(),
-        "accepted_at_montreal": accepted_local.isoformat(),
-        "consent_version": CONSENT_VERSION
+        "accepted_at_montreal": accepted_utc.astimezone(MONTREAL_TIMEZONE).isoformat(),
+        "consent_version": CONSENT_VERSION,
     }
 
+
+def withdraw_consents(attendee_id: int) -> int:
+    """Withdraw every active consent of this attendee. Returns the count."""
+    with sqlite3.connect(DB_PATH, timeout=10) as connection:
+        cursor = connection.execute(
+            """
+            UPDATE attendee_consents
+            SET withdrawn_at = ?
+            WHERE event_id = ? AND attendee_id = ? AND withdrawn_at IS NULL
+            """,
+            (datetime.now(timezone.utc).isoformat(), EVENT_ID, attendee_id)
+        )
+        return cursor.rowcount
+
+
+def active_consent_id(attendee_id: int, consent_type: str) -> int | None:
+    with sqlite3.connect(DB_PATH, timeout=10) as connection:
+        row = connection.execute(
+            """
+            SELECT id FROM attendee_consents
+            WHERE event_id = ? AND attendee_id = ? AND consent_type = ?
+              AND accepted_at IS NOT NULL AND withdrawn_at IS NULL
+            ORDER BY id DESC LIMIT 1
+            """,
+            (EVENT_ID, attendee_id, consent_type)
+        ).fetchone()
+    return row[0] if row else None
