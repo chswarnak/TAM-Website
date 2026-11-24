@@ -131,6 +131,16 @@
                    min="1"
                    required>
 
+            <label style="display:flex; gap:8px; align-items:flex-start; margin-top:16px;">
+                <input type="checkbox" name="auto_authorize_face_indexing" value="1"
+                       style="width:auto;"
+                       {% if event.auto_authorize_face_indexing %}checked{% endif %}>
+                <span>Automatically authorize uploaded photos for face indexing
+                    (turn on only if the event's notice/consent policy covers
+                    everyone photographed). When off, an admin authorizes photos
+                    on the Face Indexing page.</span>
+            </label>
+
             <button type="submit">Save Event Settings</button>
         </form>
     </div>

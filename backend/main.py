@@ -81,16 +81,19 @@ app.include_router(gallery_admin_router)
 
 from account_routes import router as account_router
 from attendee_routes import router as attendee_router
+from face_indexing_routes import router as face_indexing_router
 from admin_account_routes import router as admin_account_router
 
 app.include_router(account_router)
 app.include_router(attendee_router)
+app.include_router(face_indexing_router)
 app.include_router(admin_account_router)
 
 
 
 # Browser session configuration
 import accounts
+import face_indexing
 import rate_limit
 from http_security import client_ip
 from admin_auth import (
@@ -189,7 +192,7 @@ def home():
     )
 
 
-from fastapi import UploadFile, File, Form, HTTPException
+from fastapi import BackgroundTasks, UploadFile, File, Form, HTTPException
 from pathlib import Path
 from uuid import uuid4
 from PIL import Image, UnidentifiedImageError
@@ -201,6 +204,7 @@ UPLOAD_DIR = SETTINGS.upload_dir
 @app.post("/upload")
 async def upload_photo(
     request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...)
 ):
     # Identify the contributor from their authenticated session.
@@ -351,6 +355,9 @@ async def upload_photo(
             status_code=503,
             detail="Photo could not be saved. Please try again."
         )
+
+    # Authorize/index faces after the response, per the event's switch.
+    background_tasks.add_task(face_indexing.index_new_upload, photo_id)
 
     return {
         "message": "Photo uploaded successfully",
@@ -1719,7 +1726,8 @@ async def save_event_settings(
     upload_end_time: str = Form(...),
     status: str = Form(...),
     retention_hours: int = Form(...),
-    csrf_token: str = Form(...)
+    csrf_token: str = Form(...),
+    auto_authorize_face_indexing: str = Form("")
 ):
     admin_id = request.session.get("admin_id")
 
@@ -1814,7 +1822,8 @@ async def save_event_settings(
                 upload_start_time = ?,
                 upload_end_time = ?,
                 status = ?,
-                retention_hours = ?
+                retention_hours = ?,
+                auto_authorize_face_indexing = ?
             WHERE event_id = ?
             """,
             (
@@ -1824,6 +1833,7 @@ async def save_event_settings(
                 upload_end_time,
                 status,
                 retention_hours,
+                int(auto_authorize_face_indexing == "1"),
                 EVENT_ID
             )
         )

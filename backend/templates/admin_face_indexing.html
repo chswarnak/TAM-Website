@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TAM | Face Indexing</title>
+    <link rel="stylesheet" href="/static/css/tam-admin-festival.css">
+    <style>
+        body { font-family: Arial, sans-serif; background: #fff7e6; color: #35143e;
+               padding: 16px; margin: 0; }
+        .container { max-width: 1000px; margin: 0 auto; background: white;
+                     padding: 24px; border-radius: 16px; }
+        .table-wrap { overflow-x: auto; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; }
+        img { width: 96px; border-radius: 6px; }
+        .error { color: #b91c1c; font-size: 13px; }
+        a { color: #702080; }
+    </style>
+</head>
+<body>
+<div class="container tam-admin-festival">
+    <a href="/admin/dashboard">← Back to Dashboard</a>
+    <h1>Face Indexing</h1>
+    <p>
+        Automatic authorization for this event is
+        <strong>{{ "ON" if auto_enabled else "OFF" }}</strong>
+        (change it on Manage Events).
+        Photos below are not searchable until they are authorized and indexed.
+        Failed jobs can be retried here.
+    </p>
+    {% if photos %}
+    <form method="post" action="/admin/photos/face-indexing/authorize">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="table-wrap">
+        <table>
+            <thead><tr><th></th><th>Photo</th><th>Contributor</th><th>Uploaded</th><th>Status</th></tr></thead>
+            <tbody>
+            {% for photo in photos %}
+                <tr id="photo-{{ photo.id }}">
+                    <td><input type="checkbox" name="photo_ids" value="{{ photo.id }}"
+                               aria-label="Select photo {{ photo.id }}"></td>
+                    <td><img src="/admin/photos/{{ photo.id }}/preview" alt="Photo {{ photo.id }}" loading="lazy"></td>
+                    <td>{{ photo.contributor_name }}</td>
+                    <td>{{ photo.uploaded_at }}</td>
+                    <td>
+                        {% if photo.job_status == "failed" %}Failed
+                            <div class="error">{{ photo.error_message }}</div>
+                        {% elif photo.authorized %}Queued
+                        {% else %}Not authorized{% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        <button type="submit">Authorize &amp; index selected</button>
+    </form>
+    <form method="post" action="/admin/photos/face-indexing/authorize"
+          onsubmit="return confirm('Authorize and index all {{ photos | length }} photos?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="all_pending" value="1">
+        <button type="submit">Authorize &amp; index all</button>
+    </form>
+    {% else %}
+    <p>All uploaded photos are indexed.</p>
+    {% endif %}
+</div>
+</body>
+</html>
