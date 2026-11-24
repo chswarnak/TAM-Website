@@ -229,39 +229,62 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
         </form>
 
         <p id="message" role="status"></p>
+        <ul id="failures" aria-live="polite" style="text-align:left; color:#b91c1c;"></ul>
     </div>
 
     <script>
+    const MAX_SIZE = 100 * 1024 * 1024;
+
+    // Turn a failed response into a sentence the contributor can act on.
+    // Proxies (e.g. nginx) can answer with HTML instead of JSON, so fall
+    // back to a description of the status code.
+    async function describeFailure(response) {
+        let detail = "";
+        try {
+            const data = await response.json();
+            detail = typeof data.detail === "string" ? data.detail : "";
+        } catch (_) {}
+        if (detail) return detail;
+        const known = {
+            401: "Your login has expired. Please log in again.",
+            403: "Uploads are not allowed right now.",
+            413: "The file is too large for the server (HTTP 413).",
+            429: "Too many uploads at once. Please wait and try again.",
+            502: "The server is temporarily unreachable (HTTP 502).",
+            503: "The photo could not be saved. Please try again (HTTP 503).",
+            504: "The server took too long to respond (HTTP 504)."
+        };
+        return known[response.status] || `Upload failed (HTTP ${response.status}).`;
+    }
+
     document.getElementById("uploadForm")
         .addEventListener("submit", async function(event) {
             event.preventDefault();
 
             const fileInput = document.getElementById("photo");
             const message = document.getElementById("message");
+            const failureList = document.getElementById("failures");
             const button = this.querySelector('button[type="submit"]');
             const files = Array.from(fileInput.files);
 
+            failureList.replaceChildren();
             if (files.length === 0) {
                 message.textContent = "Please select photos first.";
                 return;
             }
 
-            const maxSize = 100 * 1024 * 1024;
             let uploaded = 0;
-            let failed = 0;
-            let uploadError = "";
-
+            const failures = [];
+            let stopReason = "";
             button.disabled = true;
 
             try {
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
+                    message.textContent = `Uploading photo ${i + 1} of ${files.length}...`;
 
-                    message.textContent =
-                        `Uploading photo ${i + 1} of ${files.length}...`;
-
-                    if (file.size > maxSize) {
-                        failed++;
+                    if (file.size > MAX_SIZE) {
+                        failures.push([file.name, "Larger than the 100 MB limit."]);
                         continue;
                     }
 
@@ -274,40 +297,41 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
                             credentials: "same-origin",
                             body: formData
                         });
-
                         if (response.ok) {
                             uploaded++;
-                        } else {
-                            failed++;
-
-                            if (response.status === 401 ||
-                                response.status === 403) {
-                                const result = await response.json();
-                                uploadError =
-                                    result.detail || "Uploads are not allowed.";
-                                break;
-                            }
+                            continue;
+                        }
+                        const reason = await describeFailure(response);
+                        failures.push([file.name, reason]);
+                        // Login/permission problems affect every remaining file.
+                        if (response.status === 401 || response.status === 403) {
+                            stopReason = reason;
+                            break;
                         }
                     } catch (error) {
-                        failed++;
+                        failures.push([file.name, "Network error: the connection was interrupted."]);
                     }
                 }
 
-                const summary =
-                    `${uploaded} photo(s) uploaded, ${failed} failed.`;
+                const skipped = files.length - uploaded - failures.length;
+                message.textContent =
+                    `${uploaded} photo(s) uploaded, ${failures.length} failed` +
+                    (skipped > 0 ? `, ${skipped} not attempted.` : ".") +
+                    (stopReason ? ` ${stopReason}` : "");
 
-                message.textContent = uploadError
-                    ? `${uploadError} (${summary})`
-                    : summary;
-
-                if (uploaded > 0) {
-                    fileInput.value = "";
+                for (const [name, reason] of failures) {
+                    const item = document.createElement("li");
+                    item.textContent = `${name}: ${reason}`;
+                    failureList.appendChild(item);
                 }
 
+                if (uploaded > 0 && failures.length === 0) {
+                    fileInput.value = "";
+                }
             } finally {
                 button.disabled = false;
             }
         });
-    </script>    
+    </script>
 </body>
 </html>
