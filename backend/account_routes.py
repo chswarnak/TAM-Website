@@ -8,7 +8,8 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 import accounts
-from http_security import require_same_origin
+import rate_limit
+from http_security import client_ip, require_same_origin
 from settings import SETTINGS
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,15 @@ class Registration(BaseModel):
 class Login(BaseModel):
     identifier: str
     password: str
+
+
+def too_many_attempts(wait: int) -> JSONResponse:
+    minutes = max(1, round(wait / 60))
+    return JSONResponse(
+        {"detail": f"Too many failed attempts. Try again in about {minutes} minute(s)."},
+        status_code=429,
+        headers={"Retry-After": str(wait)},
+    )
 
 
 def _register_page(kind: str):
@@ -88,12 +98,19 @@ def _login_page(kind: str):
 def _login_api(kind: str):
     def login(data: Login, request: Request):
         require_same_origin(request)
+        ip = client_ip(request)
+        wait = rate_limit.retry_after(kind, ip, data.identifier)
+        if wait:
+            return too_many_attempts(wait)
         try:
             account = accounts.authenticate(kind, data.identifier, data.password)
         except accounts.LoginError as error:
+            if type(error) is accounts.LoginError:  # wrong credentials only
+                rate_limit.record_failure(kind, ip, data.identifier)
             return JSONResponse({"detail": error.message},
                                 status_code=error.status_code)
 
+        rate_limit.clear_identifier(kind, ip, data.identifier)
         accounts.start_session(request, kind, account["id"])
         redirect = ("/account/change-password" if account["must_change_password"]
                     else PAGES[kind]["home"])

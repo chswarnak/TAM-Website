@@ -77,6 +77,8 @@ app.include_router(admin_account_router)
 
 # Browser session configuration
 import accounts
+import rate_limit
+from http_security import client_ip
 from admin_auth import (
     SESSION_SECRET,
     authenticate_admin,
@@ -360,9 +362,23 @@ async def admin_login(
     username: str = Form(...),
     password: str = Form(...)
 ):
+    ip = client_ip(request)
+    wait = rate_limit.retry_after("admin", ip, username)
+    if wait:
+        response = templates.TemplateResponse(
+            request=request,
+            name="admin_login.html",
+            context={"error": "Too many failed attempts. Please wait and try again."},
+            status_code=429
+        )
+        response.headers["Retry-After"] = str(wait)
+        return response
+
     admin = authenticate_admin(username, password)
 
     if admin is None:
+        rate_limit.record_failure("admin", ip, username)
+        logger.warning("Failed admin login for %r from %s", username[:64], ip)
         return templates.TemplateResponse(
             request=request,
             name="admin_login.html",
@@ -370,6 +386,7 @@ async def admin_login(
             status_code=401
         )
 
+    rate_limit.clear_identifier("admin", ip, username)
     request.session.clear()
     request.session["admin_id"] = admin["id"]
     request.session["csrf_nonce"] = secrets.token_urlsafe(32)
