@@ -369,11 +369,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             Your event memories in one place
         </p>
 
-        <div class="option disabled" aria-disabled="true">
-            <strong>📅 Event Agenda</strong>
-            <span>Coming soon</span>
-        </div>
-
+        {% if not agenda_only %}
         <a class="option" href="/contributor/login">
             <strong>📸 Contribute Photos</strong>
             <span>
@@ -387,6 +383,17 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
                 Find your event photos without contributor registration.
             </span>
         </a>
+
+        <a class="option" href="/gallery">
+            <strong>🖼️ View Event Photos</strong>
+            <span>Browse approved photos from the event.</span>
+        </a>
+
+        {% endif %}
+        <div class="option disabled" aria-disabled="true">
+            <strong>📅 Event Agenda</strong>
+            <span>Coming soon</span>
+        </div>
 
         <p class="footer">
             TAM Smart Event Photo Sharing System

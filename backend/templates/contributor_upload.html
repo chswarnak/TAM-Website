@@ -198,6 +198,39 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 }
 </style>
 
+<style>
+    .tam-photo-picker input[type="file"] {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+    }
+    .tam-photo-picker label {
+        display: block;
+        box-sizing: border-box;
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 1px solid #253969;
+        border-radius: 6px;
+        background: #eaf0fa;
+        color: #253969;
+        font: inherit;
+        font-weight: 600;
+        text-align: center;
+        cursor: pointer;
+    }
+    .tam-photo-picker input:focus-visible + label {
+        outline: 2px solid #253969;
+        outline-offset: 3px;
+    }
+    #tam-photo-selection {
+        display: block;
+        margin: 0.55rem 0 0.85rem;
+        color: #51463d;
+        font-size: 0.9rem;
+        text-align: center;
+    }
+</style>
 </head>
 <body>
     <div class="container">
@@ -218,12 +251,29 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
         <p>Maximum photo size: 100 MB</p>
 
         <form id="uploadForm">
-            <input type="file"
+            <div class="tam-photo-picker">
+    <input type="file"
                    id="photo"
                    name="file"
                    accept="image/jpeg,image/png,image/webp"
                    multiple
                    required>
+    <label for="photo">Choose Photos</label>
+    <span id="tam-photo-selection" aria-live="polite">No photos selected</span>
+</div>
+<script>
+    (() => {
+        const input = document.getElementById("photo");
+        const selection = document.getElementById("tam-photo-selection");
+
+        input.addEventListener("change", () => {
+            const count = input.files.length;
+            selection.textContent = count === 0
+                ? "No photos selected"
+                : `${count} photo${count === 1 ? "" : "s"} selected`;
+        });
+    })();
+</script>
 
             <button type="submit">Upload Photos</button>
         </form>
@@ -249,7 +299,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             const maxSize = 100 * 1024 * 1024;
             let uploaded = 0;
             let failed = 0;
-            let uploadError = "";
+            const uploadErrors = [];
 
             button.disabled = true;
 
@@ -262,6 +312,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 
                     if (file.size > maxSize) {
                         failed++;
+                        uploadErrors.push(`${file.name}: Photo exceeds 100 MB.`);
                         continue;
                     }
 
@@ -279,29 +330,31 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
                             uploaded++;
                         } else {
                             failed++;
+                            const result = await response.json().catch(() => null);
+                            const reason = typeof result?.detail === "string"
+                                ? result.detail
+                                : `Upload failed (HTTP ${response.status}).`;
+                            uploadErrors.push(`${file.name}: ${reason}`);
 
                             if (response.status === 401 ||
                                 response.status === 403) {
-                                const result = await response.json();
-                                uploadError =
-                                    result.detail || "Uploads are not allowed.";
                                 break;
                             }
                         }
                     } catch (error) {
                         failed++;
+                        uploadErrors.push(`${file.name}: Could not reach the upload server.`);
                     }
                 }
 
                 const summary =
                     `${uploaded} photo(s) uploaded, ${failed} failed.`;
 
-                message.textContent = uploadError
-                    ? `${uploadError} (${summary})`
-                    : summary;
+                message.textContent = [summary, ...uploadErrors].join(" ");
 
                 if (uploaded > 0) {
                     fileInput.value = "";
+                    fileInput.dispatchEvent(new Event("change"));
                 }
 
             } finally {

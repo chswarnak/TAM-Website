@@ -213,6 +213,12 @@
                         {% endif %}
 
 
+                        <form action="/admin/contributors/{{ contributor.id }}/password-reset"
+                              method="post">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit">Create Password Reset Link</button>
+                        </form>
+
                         {% if contributor.active and not contributor.deleted_at %}
                         <form action="/admin/contributors/{{ contributor.id }}/delete"
                             method="post"

@@ -116,7 +116,6 @@ def list_gallery_photos(request: __import__("fastapi").Request, page: int = 1):
               ON c.id = p.contributor_id
             WHERE p.event_id = ?
               AND p.status = 'available'
-              AND p.gallery_approved = 1
               AND p.s3_bucket = 'tam-smart-event-photos'
               AND p.s3_key IS NOT NULL
               AND p.s3_key != ''
@@ -179,7 +178,6 @@ def gallery_photo_thumbnail(
             WHERE p.id = ?
               AND p.event_id = ?
               AND p.status = 'available'
-              AND p.gallery_approved = 1
               AND p.s3_bucket = 'tam-smart-event-photos'
               AND p.s3_key IS NOT NULL
               AND p.s3_key != ''
@@ -216,7 +214,6 @@ def gallery_photo_thumbnail(
             WHERE id = ?
               AND event_id = ?
               AND status = 'available'
-              AND gallery_approved = 1
             """,
             (photo_id, event_id),
         ).fetchone()
@@ -284,7 +281,6 @@ def gallery_photo_download(
             WHERE p.id = ?
               AND p.event_id = ?
               AND p.status = 'available'
-              AND p.gallery_approved = 1
               AND p.s3_bucket = 'tam-smart-event-photos'
               AND p.s3_key IS NOT NULL
               AND p.s3_key != ''
@@ -321,7 +317,6 @@ def gallery_photo_download(
                 WHERE id = ?
                   AND event_id = ?
                   AND status = 'available'
-                  AND gallery_approved = 1
                 """,
                 (photo_id, event_id),
             ).fetchone()

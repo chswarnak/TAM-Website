@@ -335,6 +335,10 @@ body > .card {
                 autocomplete="new-password"
             >
 
+            <label for="email">Email address</label>
+            <input id="email" type="email" maxlength="254"
+                   autocomplete="email" required>
+
             <button id="registerButton" type="submit">
                 Register as Contributor
             </button>
@@ -389,6 +393,7 @@ body > .card {
                     body: JSON.stringify({
                         name,
                         mobile_number,
+                        email: document.getElementById("email").value.trim(),
                         password
                     })
                 });

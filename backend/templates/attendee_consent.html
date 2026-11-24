@@ -361,6 +361,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             </button>
 
         </form>
+        <p><a href="/events/tam-diwali-2026?agenda=1">Agenda Only</a></p>
 
 
         <p id="message" role="status"></p>
@@ -429,6 +430,10 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
                         message.textContent =
                             "Your decision has been respected. " +
                             "Facial recognition will not be performed.";
+                        if (new URLSearchParams(location.search).get("entry") === "event") {
+                            window.location.assign("/events/tam-diwali-2026?agenda=1");
+                            return;
+                        }
                     } else if (data.status === "recorded") {
                         const ids = data.consents.map(
                             record => `#${record.consent_id}`
@@ -443,7 +448,11 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
                             `Date and time: ${recordedTime}`;
 
                         // Redirect to selfie page after successful consent.
-                        window.location.assign("/find-my-photos");   
+                        const fromEvent = new URLSearchParams(location.search)
+                            .get("entry") === "event";
+                        window.location.assign(fromEvent
+                            ? "/events/tam-diwali-2026"
+                            : "/find-my-photos");
                         
                     } else {
                         throw new Error("Unexpected server response.");

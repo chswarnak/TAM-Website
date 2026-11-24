@@ -70,11 +70,46 @@ async def gallery_page(request: Request):
     )
 
     if viewer is None:
-        return RedirectResponse(
-            url="/gallery/register",
-            status_code=303,
-            headers={"Cache-Control": "no-store"},
+        import sqlite3
+        from gallery_sessions import create_gallery_session, GALLERY_SESSION_DURATION
+
+        consent_id = getattr(request.state, "event_selfie_consent_id", None)
+
+        with sqlite3.connect(DB_PATH, timeout=10) as connection:
+            attendee = connection.execute(
+                """
+                SELECT attendee_name, attendee_mobile
+                FROM attendee_consents
+                WHERE id = ? AND event_id = ?
+                  AND consent_type = 'selfie_search'
+                  AND accepted_at IS NOT NULL AND withdrawn_at IS NULL
+                """,
+                (consent_id, EVENT_ID),
+            ).fetchone()
+
+            if attendee is None or not attendee[0] or not attendee[1]:
+                return RedirectResponse(
+                    url="/attendee-consent?entry=event",
+                    status_code=303,
+                    headers={"Cache-Control": "no-store"},
+                )
+
+            token = create_gallery_session(connection, EVENT_ID, attendee[0], attendee[1])
+
+        response = RedirectResponse(
+            url="/gallery", status_code=303, headers={"Cache-Control": "no-store"}
         )
+        response.delete_cookie("tam_gallery_session", path="/api/gallery", secure=True)
+        response.set_cookie(
+            "tam_gallery_session",
+            token,
+            max_age=GALLERY_SESSION_DURATION,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+        return response
 
     return templates.TemplateResponse(
         request=request,

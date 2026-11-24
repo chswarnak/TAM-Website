@@ -201,7 +201,8 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
         <p>Sign in to upload your event photos</p>
 
         <form id="loginForm">
-            <label for="contributor_name">Contributor Name</label>
+            <label for="contributor_name">Email address</label>
+            <p>Registered before email sign-in? Use your contributor name.</p>
             <input type="text"
                    id="contributor_name"
                    required>
@@ -213,6 +214,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 
             <button type="submit">Login</button>
         </form>
+        <p><a href="/contributor/reset-password">Forgot password?</a></p>
     <div style="text-align:center; margin-top:20px;">
         <p style="color:#555; font-size:14px;">
             New contributor?
@@ -259,7 +261,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
                         },
                         credentials: "same-origin",
                         body: JSON.stringify({
-                            name,
+                            ...(name.includes("@") ? { email: name } : { name }),
                             password
                         })
                     });

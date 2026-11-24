@@ -154,7 +154,21 @@ def is_upload_window_open(event_id=EVENT_ID, check_at=None):
     event_date, start_time, end_time, timezone, status = event
 
     # Only active events can accept photos.
-    if status != "active" or not event_date:
+    if status != "active":
+        return False
+
+    # Allow Diwali uploads through the end of the event.
+    if event_id == EVENT_ID:
+        montreal = ZoneInfo("America/Toronto")
+        current_time = (
+            check_at.astimezone(montreal)
+            if check_at is not None
+            else datetime.now(montreal)
+        )
+        if current_time < datetime(2026, 11, 28, 22, 0, tzinfo=montreal):
+            return True
+
+    if not event_date:
         return False
 
     # Check the event's local date and time.
@@ -180,12 +194,14 @@ def is_upload_window_open(event_id=EVENT_ID, check_at=None):
 
 class ContributorRegistration(BaseModel):
     name: str
+    email: str
     mobile_number: str
     password: str
 
 
 class ContributorLogin(BaseModel):
     # TAM-CONTRIBUTOR-NAME-LOGIN-V1
+    email: str | None = None
     name: str | None = None
     contributor_id: int | None = None
     password: str
@@ -317,8 +333,11 @@ def home():
 from fastapi import UploadFile, File, Form, HTTPException
 from pathlib import Path
 from uuid import uuid4
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from io import BytesIO
+from pillow_heif import register_heif_opener
+
+register_heif_opener()
 
 UPLOAD_DIR = Path(__file__).parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -357,31 +376,39 @@ async def upload_photo(
         )
 
 
-    # Verify the file is a supported image
+    # Normalize supported photos to JPEG before storage and indexing.
     try:
-        image = Image.open(BytesIO(data))
-        image.verify()
-        image_format = image.format
-    except (UnidentifiedImageError, OSError):
+        with Image.open(BytesIO(data)) as image:
+            if image.format not in {"JPEG", "PNG", "WEBP", "HEIF", "MPO"}:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Detected photo format: {image.format or 'unknown'}. "
+                        "Choose a JPEG, PNG, WebP, HEIC/HEIF, or MPO photo."
+                    )
+                )
+
+            oriented = ImageOps.exif_transpose(image)
+            if "A" in oriented.getbands() or "transparency" in oriented.info:
+                rgba = oriented.convert("RGBA")
+                rgb = Image.new("RGB", rgba.size, "white")
+                rgb.paste(rgba, mask=rgba.getchannel("A"))
+            else:
+                rgb = oriented.convert("RGB")
+
+            output = BytesIO()
+            rgb.save(output, format="JPEG", quality=92)
+            data = output.getvalue()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
         raise HTTPException(
             status_code=400,
-            detail="Invalid image file"
+            detail="Could not read this photo. Try exporting it as a JPEG."
         )
 
-    extensions = {
-        "JPEG": ".jpg",
-        "PNG": ".png",
-        "WEBP": ".webp"
-    }
+    if len(data) > MAX_PHOTO_SIZE:
+        raise HTTPException(status_code=413, detail="Converted photo exceeds 100 MB")
 
-    if image_format not in extensions:
-        raise HTTPException(
-            status_code=400,
-            detail="Unsupported image format"
-        )
-
-    # Generate a unique filename
-    filename = f"{uuid4()}{extensions[image_format]}"
+    filename = f"{uuid4()}.jpg"
     event_id = "tam-diwali-2026"
  
     # Verify contributor registration in SQLite
@@ -497,7 +524,12 @@ async def upload_photo(
 @app.post("/register")
 def register_contributor(data: ContributorRegistration):
     name = data.name.strip()
+    import re
+
     mobile = data.mobile_number.strip()
+    email = data.email.strip().lower()
+    if len(email) > 254 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+        raise HTTPException(400, "Enter a valid email address.")
     password = data.password
 
     if len(password) < 8:
@@ -544,11 +576,14 @@ def register_contributor(data: ContributorRegistration):
         
             """
             INSERT INTO contributors
-                (name, mobile_number, event_id, approved, password_hash)
-            VALUES (?, ?, ?, 0, ?)
+                (name, mobile_number, event_id, approved, password_hash, email)
+            VALUES (?, ?, ?, 0, ?, ?)
+            ON CONFLICT(event_id, email COLLATE NOCASE) DO NOTHING
             """,
-            (name, mobile, EVENT_ID, password_hash)
+            (name, mobile, EVENT_ID, password_hash, email)
         )
+        if cursor.rowcount != 1:
+            raise HTTPException(409, "An account already uses this email for this event.")
         contributor_id = cursor.lastrowid
         connection.commit()
 
@@ -572,14 +607,24 @@ def login_contributor(
     with sqlite3.connect(DB_PATH) as connection:
         connection.row_factory = sqlite3.Row
 
-        if data.name is not None and data.name.strip():
+        if data.email is not None and data.email.strip():
+            contributor = connection.execute(
+                """
+                SELECT id, name, password_hash, approved, active, deleted_at
+                FROM contributors
+                WHERE event_id = ? AND email = ? COLLATE NOCASE
+                """,
+                (EVENT_ID, data.email.strip().lower()),
+            ).fetchone()
+
+        elif data.name is not None and data.name.strip():
             matches = connection.execute(
                 """
                 SELECT id, name, password_hash,
                        approved, active, deleted_at
                 FROM contributors
                 WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
-                  AND event_id = ?
+                  AND event_id = ? AND email IS NULL
                 LIMIT 2
                 """,
                 (data.name.strip(), EVENT_ID)
@@ -595,7 +640,7 @@ def login_contributor(
                 SELECT id, name, password_hash,
                        approved, active, deleted_at
                 FROM contributors
-                WHERE id = ? AND event_id = ?
+                WHERE id = ? AND event_id = ? AND email IS NULL
                 """,
                 (data.contributor_id, EVENT_ID)
             ).fetchone()
@@ -1521,6 +1566,168 @@ async def manage_contributors(request: Request):
     )
 
     
+
+def contributor_reset_signer():
+    from itsdangerous import URLSafeTimedSerializer
+
+    return URLSafeTimedSerializer(
+        SESSION_SECRET, salt="tam-contributor-password-reset"
+    )
+
+
+def contributor_password_fingerprint(password_hash):
+    from hashlib import sha256
+
+    return sha256(password_hash.encode("utf-8")).hexdigest()
+
+
+@app.post("/admin/contributors/{contributor_id}/password-reset")
+def create_contributor_password_reset(
+    contributor_id: int, request: Request, csrf_token: str = Form(...)
+):
+    from secrets import token_urlsafe
+
+    admin_id = request.session.get("admin_id")
+    if admin_id is None or not has_admin_permission(admin_id, "can_approve_contributors"):
+        raise HTTPException(403, "Contributor management permission required")
+
+    nonce = request.session.get("csrf_nonce", "")
+    if not nonce or not verify_csrf_token(csrf_token, admin_id, nonce):
+        raise HTTPException(403, "Invalid or expired security token")
+
+    with sqlite3.connect(DB_PATH) as connection:
+        admin = connection.execute(
+            """
+            SELECT 1 FROM admins
+            WHERE id = ? AND active = 1 AND deleted_at IS NULL
+              AND must_change_password = 0
+            """,
+            (admin_id,),
+        ).fetchone()
+        if admin is None:
+            raise HTTPException(403, "Active administrator access required")
+
+        contributor = connection.execute(
+            """
+            SELECT password_hash FROM contributors
+            WHERE id = ? AND event_id = ? AND active = 1 AND deleted_at IS NULL
+            """,
+            (contributor_id, EVENT_ID),
+        ).fetchone()
+
+    if not contributor or not contributor[0]:
+        raise HTTPException(404, "Contributor account unavailable")
+
+    token = contributor_reset_signer().dumps({
+        "contributor": contributor_id,
+        "event": EVENT_ID,
+        "password": contributor_password_fingerprint(contributor[0]),
+        "nonce": token_urlsafe(24),
+    })
+    reset_url = (
+        "https://tam-smartphotos.duckdns.org/contributor/reset-password#"
+        + token
+    )
+    return HTMLResponse(
+        f"<h1>Contributor password reset</h1>"
+        f"<p>Share this link privately with the verified contributor. "
+        f"It expires in 30 minutes.</p>"
+        f'<p><a href="{reset_url}">{reset_url}</a></p>'
+        f'<p><a href="/admin/contributors/manage">Back to Manage Contributors</a></p>',
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+
+
+@app.get("/contributor/reset-password", response_class=HTMLResponse)
+def contributor_password_reset_page():
+    return HTMLResponse(
+        """
+        <!doctype html>
+        <html lang="en">
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Reset contributor password</title>
+        <h1>Reset contributor password</h1>
+        <p id="reset-help">Use the one-time link provided by your TAM event administrator.</p>
+        <form id="reset-form" method="post" action="/contributor/reset-password" hidden>
+            <input id="reset-token" name="token" type="hidden">
+            <p><label>New password
+                <input name="password" type="password" autocomplete="new-password"
+                       required minlength="12" maxlength="128">
+            </label></p>
+            <p><label>Confirm new password
+                <input name="confirmation" type="password" autocomplete="new-password"
+                       required minlength="12" maxlength="128">
+            </label></p>
+            <button type="submit">Set New Password</button>
+        </form>
+        <p><a href="/contributor/login">Back to Contributor Login</a></p>
+        <script>
+            const token = location.hash.slice(1);
+            if (token) {
+                document.getElementById("reset-token").value = token;
+                document.getElementById("reset-form").hidden = false;
+                document.getElementById("reset-help").textContent =
+                    "Choose a new password with at least 12 characters.";
+                history.replaceState(null, "", location.pathname);
+            }
+        </script>
+        </html>
+        """,
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+
+
+@app.post("/contributor/reset-password")
+def reset_contributor_password(
+    token: str = Form(...), password: str = Form(...), confirmation: str = Form(...)
+):
+    from hmac import compare_digest
+    from itsdangerous import BadData
+
+    invalid = "This reset link is invalid, expired, or already used. Ask TAM for a new one."
+    if len(token) > 1024:
+        raise HTTPException(400, invalid)
+    try:
+        data = contributor_reset_signer().loads(token, max_age=30 * 60)
+    except BadData:
+        raise HTTPException(400, invalid)
+
+    if data["event"] != EVENT_ID:
+        raise HTTPException(400, invalid)
+    if not 12 <= len(password) <= 128 or password != confirmation:
+        raise HTTPException(400, "Enter matching passwords of 12 to 128 characters.")
+
+    with sqlite3.connect(DB_PATH) as connection:
+        current = connection.execute(
+            """
+            SELECT password_hash FROM contributors
+            WHERE id = ? AND event_id = ? AND active = 1 AND deleted_at IS NULL
+            """,
+            (data["contributor"], EVENT_ID),
+        ).fetchone()
+
+        if not current or not current[0] or not compare_digest(
+            contributor_password_fingerprint(current[0]), data["password"]
+        ):
+            raise HTTPException(400, invalid)
+
+        cursor = connection.execute(
+            """
+            UPDATE contributors SET password_hash = ?
+            WHERE id = ? AND event_id = ? AND active = 1 AND deleted_at IS NULL
+              AND password_hash = ?
+            """,
+            (password_hasher.hash(password), data["contributor"], EVENT_ID, current[0]),
+        )
+        if cursor.rowcount != 1:
+            raise HTTPException(400, invalid)
+
+    return RedirectResponse(
+        url="/contributor/login", status_code=303, headers={"Cache-Control": "no-store"}
+    )
+
+
 # Create the Disable Uploads endpoint
 
 @app.post("/admin/contributors/{contributor_id}/disable-uploads")
@@ -2428,38 +2635,38 @@ async def contributor_logout(request: Request):
 
 @app.get("/api/find-my-photos/consent-status")
 async def guest_consent_status(request: Request):
-    """
-    Check whether this browser has an active
-    consent-to-selfie session.
-
-    Development-only endpoint.
-    """
     from fastapi.responses import JSONResponse
     from guest_sessions import (
         CONSENT_FLOW_COOKIE_NAME,
-        validate_guest_consent_flow
+        CONSENT_FLOW_DURATION_SECONDS,
+        create_guest_consent_flow,
+        validate_guest_consent_flow,
     )
 
-    token = request.cookies.get(CONSENT_FLOW_COOKIE_NAME)
+    consent_id = active_event_selfie_consent(request)
+    response = JSONResponse(
+        {"consent_verified": consent_id is not None},
+        headers={"Cache-Control": "no-store"},
+    )
+    if consent_id is None:
+        return response
 
-    if not token:
-        return JSONResponse({
-            "consent_verified": False
-        })
-
+    current_token = request.cookies.get(CONSENT_FLOW_COOKIE_NAME)
     with sqlite3.connect(DB_PATH, timeout=10) as connection:
-        consent_id = validate_guest_consent_flow(
-            connection,
-            token,
-            EVENT_ID
-        )
+        if validate_guest_consent_flow(connection, current_token, EVENT_ID) == consent_id:
+            return response
+        token = create_guest_consent_flow(connection, consent_id, EVENT_ID)
 
-    return JSONResponse(
-        {
-            "consent_verified": consent_id is not None
-        },
-        headers={"Cache-Control": "no-store"}
+    response.set_cookie(
+        CONSENT_FLOW_COOKIE_NAME,
+        token,
+        max_age=CONSENT_FLOW_DURATION_SECONDS,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
     )
+    return response
 
 
 @app.get("/api/guest/photos/{photo_id}/download")
@@ -2939,15 +3146,103 @@ async def search_guest_photos(request: Request):
 
 
 
+
+EVENT_PORTAL_URL = "/events/tam-diwali-2026"
+EVENT_CONSENT_URL = "/attendee-consent?entry=event"
+EVENT_CONSENT_COOKIE = "tam_event_consent"
+EVENT_CONSENT_MAX_AGE = 24 * 60 * 60
+
+
+def event_consent_signer():
+    from itsdangerous import URLSafeTimedSerializer
+
+    return URLSafeTimedSerializer(
+        SESSION_SECRET, salt="tam-event-consent-v1"
+    )
+
+
+def active_event_selfie_consent(request):
+    from itsdangerous import BadData
+
+    token = request.cookies.get(EVENT_CONSENT_COOKIE)
+    if not token:
+        return None
+
+    try:
+        claim = event_consent_signer().loads(token, max_age=EVENT_CONSENT_MAX_AGE)
+    except BadData:
+        return None
+
+    if claim["event_id"] != EVENT_ID:
+        return None
+
+    with sqlite3.connect(DB_PATH, timeout=10) as connection:
+        row = connection.execute(
+            """
+            SELECT search.id
+            FROM attendee_consents AS search
+            JOIN attendee_consents AS indexing
+              ON indexing.event_id = search.event_id
+            WHERE search.id = ? AND indexing.id = ?
+              AND search.event_id = ?
+              AND search.consent_type = 'selfie_search'
+              AND indexing.consent_type = 'facial_indexing'
+              AND search.accepted_at IS NOT NULL
+              AND indexing.accepted_at IS NOT NULL
+              AND search.withdrawn_at IS NULL
+              AND indexing.withdrawn_at IS NULL
+            """,
+            (claim["selfie_id"], claim["indexing_id"], EVENT_ID),
+        ).fetchone()
+
+    return row[0] if row else None
+
+
+@app.middleware("http")
+async def require_event_photo_consent(request: Request, call_next):
+    from fastapi.responses import JSONResponse
+
+    path = request.url.path
+    photo_page = path in {
+        "/contributor/camera", "/contributor/upload", "/contributor/register",
+        "/find-my-photos", "/gallery", "/gallery/register",
+    }
+    photo_api = path in {"/upload", "/register"} or path.startswith((
+        "/api/gallery/", "/api/find-my-photos/", "/api/guest/photos/",
+    ))
+
+    if photo_page or photo_api:
+        request.state.event_selfie_consent_id = active_event_selfie_consent(request)
+
+    if (photo_page or photo_api) and request.state.event_selfie_consent_id is None:
+        headers = {"Cache-Control": "no-store"}
+        if photo_page and request.method == "GET":
+            return RedirectResponse(EVENT_CONSENT_URL, status_code=303, headers=headers)
+        return JSONResponse(
+            {"detail": "Open the event page and complete the photo consent form first."},
+            status_code=403,
+            headers=headers,
+        )
+
+    return await call_next(request)
+
+
 @app.get(
     "/events/tam-diwali-2026",
     response_class=HTMLResponse
 )
 async def tam_event_portal(request: Request):
+    agenda_only = request.query_params.get("agenda") == "1"
+    headers = {"Cache-Control": "no-store"}
+
+    if not agenda_only and active_event_selfie_consent(request) is None:
+        return RedirectResponse(EVENT_CONSENT_URL, status_code=303, headers=headers)
+
     return templates.TemplateResponse(
         request=request,
         name="event_portal.html",
-        context={}
+        context={"agenda_only": agenda_only},
+        headers=headers,
     )
 
 
@@ -3081,6 +3376,9 @@ async def submit_attendee_consent(request: Request):
             samesite="lax"
         )
 
+        response.delete_cookie(EVENT_CONSENT_COOKIE, path="/", secure=True)
+        response.delete_cookie("tam_gallery_session", path="/", secure=True)
+        response.delete_cookie("tam_gallery_session", path="/api/gallery", secure=True)
         return response
 
 
@@ -3150,6 +3448,24 @@ async def submit_attendee_consent(request: Request):
         "consents": records
     })
 
+    indexing_consent_id = next(
+        record["consent_id"] for record in records
+        if record["consent_type"] == "facial_indexing"
+    )
+    response.set_cookie(
+        EVENT_CONSENT_COOKIE,
+        event_consent_signer().dumps({
+            "event_id": EVENT_ID,
+            "selfie_id": selfie_consent_id,
+            "indexing_id": indexing_consent_id,
+        }),
+        max_age=EVENT_CONSENT_MAX_AGE,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+    )
+
     response.set_cookie(
         key=CONSENT_FLOW_COOKIE_NAME,
         value=flow_token,
@@ -3167,6 +3483,8 @@ async def submit_attendee_consent(request: Request):
         samesite="lax"
     )
 
+    response.delete_cookie("tam_gallery_session", path="/", secure=True)
+    response.delete_cookie("tam_gallery_session", path="/api/gallery", secure=True)
     return response
 
 
