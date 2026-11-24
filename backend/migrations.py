@@ -162,12 +162,51 @@ def _m004_indexing_and_notifications(conn: sqlite3.Connection) -> None:
     """)
 
 
+def reconcile_indexed_photos(conn: sqlite3.Connection) -> None:
+    """Make photos indexed before this release consistent, without AWS calls.
+
+    Search only returns photos whose index job is 'completed'. Older code
+    could leave faces stored with no job row, or a job stuck in
+    'processing' ("reconciliation required"). Here:
+      * faces stored + job missing/unfinished  -> job 'completed' (searchable,
+        and never sent to Rekognition again);
+      * job stuck in 'processing' with no faces -> 'failed' (retryable from
+        the admin Face Indexing page).
+    Authorizations are never created here: that remains a consent decision.
+    """
+    conn.execute("""
+        INSERT INTO photo_index_jobs
+            (photo_id, collection_id, status, face_count, completed_at)
+        SELECT photo_id, collection_id, 'completed', COUNT(*), CURRENT_TIMESTAMP
+        FROM photo_faces
+        GROUP BY photo_id, collection_id
+        ON CONFLICT(photo_id, collection_id) DO UPDATE SET
+            status = 'completed',
+            face_count = excluded.face_count,
+            completed_at = COALESCE(photo_index_jobs.completed_at, excluded.completed_at),
+            error_message = NULL
+        WHERE photo_index_jobs.status != 'completed'
+    """)
+    conn.execute("""
+        UPDATE photo_index_jobs
+        SET status = 'failed',
+            error_message = 'Interrupted before faces were stored; safe to retry'
+        WHERE status = 'processing'
+          AND NOT EXISTS (
+              SELECT 1 FROM photo_faces f
+              WHERE f.photo_id = photo_index_jobs.photo_id
+                AND f.collection_id = photo_index_jobs.collection_id
+          )
+    """)
+
+
 MIGRATIONS: list[tuple[str, Callable[[sqlite3.Connection], None]]] = [
     ("000_baseline", _m000_baseline),
     ("001_gallery", _m001_gallery),
     ("002_accounts", _m002_accounts),
     ("003_attendee_search", _m003_attendee_search),
     ("004_indexing_and_notifications", _m004_indexing_and_notifications),
+    ("005_reconcile_indexed_photos", reconcile_indexed_photos),
 ]
 
 

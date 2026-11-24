@@ -126,6 +126,7 @@
                     <th>Username</th>
                     <th>Role</th>
                     <th>Status</th>
+                    <th>Permissions</th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -145,6 +146,22 @@
                     </td>
 
                     
+                    <td>
+                        {% if organizer.role == "admin" %}
+                        <form action="/admin/organizers/{{ organizer.id }}/permissions" method="post">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <label><input type="checkbox" name="can_approve_contributors" value="1"
+                                {% if organizer.can_approve_contributors %}checked{% endif %}>
+                                Approve accounts (can_approve_contributors)</label><br>
+                            <label><input type="checkbox" name="can_manage_photos" value="1"
+                                {% if organizer.can_manage_photos %}checked{% endif %}>
+                                Face indexing (can_manage_photos)</label><br>
+                            <button type="submit">Save permissions</button>
+                        </form>
+                        {% else %}
+                            All (Super Admin)
+                        {% endif %}
+                    </td>
                     <td>
                         {% if organizer.role == "admin" %}
 

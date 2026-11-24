@@ -33,14 +33,18 @@ _Last updated: 2026-11-23. Branch: `feat/secure-accounts-and-search` (not pushed
 - The gallery access code and anonymous registration were removed (login replaces them).
 
 ## Next steps
-- Deploy: follow database/SETUP.md "Upgrade an existing database", then set
+- Deploy: follow database/SETUP.md (run indexing_report.py before/after migrating),
+  then docs/deployment-checklist.md. Set
   the env vars (README table). Configure SES (verify sender, leave sandbox)
   or SMTP, then set `TAM_EMAIL_PROVIDER`.
 - Before the event: the Super Admin uses "Set login" for every existing contributor.
 - Legal/privacy: fill in `PRIVACY_CONTACT` and the retention policies in consent_service.py.
-- Not built: a UI to grant organizer permissions (organizer_permissions rows
-  must be inserted by hand); attendee disable/delete; the Face Indexing page
-  previews require Super Admin (organizers with can_manage_photos see broken thumbnails).
+- Follow-up (same day, done): attendee disable/re-enable/delete (access ends
+  immediately, search results revoked); Face Indexing thumbnails for
+  can_manage_photos; organizer permission checkboxes on Manage Organizers;
+  migration 005 + re-index guard so live indexed photos stay searchable
+  without being indexed twice; `backend/indexing_report.py` (read-only);
+  docs/deployment-checklist.md for the first live test of Rekognition and email.
 - Real AWS (Rekognition, SES) not tested: no credentials locally.
 
 ## Blockers

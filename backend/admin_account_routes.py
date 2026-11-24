@@ -2,6 +2,7 @@
 
 import logging
 import secrets
+import sqlite3
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -9,7 +10,9 @@ from fastapi.templating import Jinja2Templates
 
 import account_tokens
 import accounts
+import guest_sessions
 from admin_auth import create_csrf_token, require_admin_permission
+from database import DB_PATH
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -94,7 +97,8 @@ def manage_attendees(request: Request):
     admin_id = require_admin_permission(request, APPROVE_PERMISSION)
     return templates.TemplateResponse(
         request=request, name="admin_manage_attendees.html",
-        context={"attendees": accounts.list_accounts("attendee"),
+        context={"attendees": accounts.list_accounts("attendee",
+                                                     include_disabled=True),
                  "csrf_token": create_csrf_token(
                      admin_id, request.session.get("csrf_nonce", ""))},
     )
@@ -195,3 +199,36 @@ def admin_reset_password(kind: str, account_id: int, request: Request,
         context={"temporary": temporary, "kind": kind, "account_id": account_id,
                  "back": _manage_page(kind)},
     )
+
+
+# ------------------------------------------------------ attendee status
+
+def _revoke_attendee_access(attendee_id: int) -> None:
+    """Delete stored search results so nothing outlives the account."""
+    with sqlite3.connect(DB_PATH, timeout=10) as connection:
+        guest_sessions.revoke_attendee_sessions(connection, attendee_id)
+
+
+@router.post("/admin/accounts/attendee/{attendee_id}/{action}")
+def change_attendee_status(attendee_id: int, action: str, request: Request,
+                           csrf_token: str = Form(...)):
+    """Disable, re-enable or delete an attendee.
+
+    Access ends immediately: every attendee request re-checks the account
+    in the database, and stored search results are deleted as well.
+    """
+    if action not in ("disable", "enable", "delete"):
+        raise HTTPException(status_code=404, detail="Unknown action")
+    admin_id = require_admin_permission(request, APPROVE_PERMISSION, csrf_token)
+
+    if action == "delete":
+        changed = accounts.soft_delete("attendee", attendee_id)
+    else:
+        changed = accounts.set_active("attendee", attendee_id, action == "enable")
+    if not changed:
+        raise HTTPException(status_code=404, detail="Attendee not found")
+    if action != "enable":
+        _revoke_attendee_access(attendee_id)
+
+    logger.info("Admin %s %sd attendee %s", admin_id, action.rstrip("e"), attendee_id)
+    return RedirectResponse(url="/admin/attendees/manage", status_code=303)

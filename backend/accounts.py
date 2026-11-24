@@ -318,16 +318,44 @@ def approve(kind: str, account_ids: list[int], admin_id: int) -> int:
         return cursor.rowcount
 
 
-def list_accounts(kind: str, pending_only: bool = False) -> list[dict]:
+def set_active(kind: str, account_id: int, active: bool) -> bool:
+    """Disable or re-enable a (not deleted) account. True if it changed."""
+    table = table_for(kind)
+    with _connect() as connection:
+        cursor = connection.execute(
+            f"UPDATE {table} SET active = ? "
+            "WHERE id = ? AND event_id = ? AND deleted_at IS NULL",
+            (int(active), account_id, SETTINGS.event_id)
+        )
+    return cursor.rowcount == 1
+
+
+def soft_delete(kind: str, account_id: int) -> bool:
+    """Delete an account (kept for audit history). True if it changed."""
+    table = table_for(kind)
+    with _connect() as connection:
+        cursor = connection.execute(
+            f"UPDATE {table} SET active = 0, deleted_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND event_id = ? AND deleted_at IS NULL",
+            (account_id, SETTINGS.event_id)
+        )
+    return cursor.rowcount == 1
+
+
+def list_accounts(kind: str, pending_only: bool = False,
+                  include_disabled: bool = False) -> list[dict]:
+    """Non-deleted accounts; disabled ones only when include_disabled."""
     table = table_for(kind)
     pending_clause = "AND approved = 0" if pending_only else ""
+    active_clause = "" if include_disabled else "AND active = 1"
     with _connect() as connection:
         rows = connection.execute(
             f"""
             SELECT id, {NAME_COLUMNS[kind]} AS full_name, email, username,
-                   mobile_number, approved
+                   mobile_number, approved, active
             FROM {table}
-            WHERE event_id = ? AND active = 1 AND deleted_at IS NULL
+            WHERE event_id = ? AND deleted_at IS NULL
+              {active_clause}
               {pending_clause}
             ORDER BY id
             """,

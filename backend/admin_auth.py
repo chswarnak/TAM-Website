@@ -121,3 +121,24 @@ def require_admin_permission(
         raise HTTPException(status_code=403, detail="Permission denied")
 
     return admin_id
+
+
+def require_super_admin(request: Request, csrf_token: str | None = None) -> int:
+    """Return the id of an active Super Admin who has finished password
+    setup, or raise 401/403. Verifies csrf_token when given."""
+    admin_id = request.session.get("admin_id")
+    if not isinstance(admin_id, int):
+        raise HTTPException(status_code=401, detail="Administrator login required")
+    if csrf_token is not None and not verify_csrf_token(
+        csrf_token, admin_id, request.session.get("csrf_nonce", "")
+    ):
+        raise HTTPException(status_code=403, detail="Invalid or expired security token")
+    with sqlite3.connect(DB_PATH) as connection:
+        admin = connection.execute(
+            "SELECT role, must_change_password FROM admins "
+            "WHERE id = ? AND active = 1 AND deleted_at IS NULL",
+            (admin_id,)
+        ).fetchone()
+    if admin is None or admin[0] != "super_admin" or admin[1]:
+        raise HTTPException(status_code=403, detail="Super Admin access required")
+    return admin_id

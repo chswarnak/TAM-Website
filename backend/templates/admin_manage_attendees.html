@@ -47,12 +47,22 @@
                     </details>
                 </td>
                 <td>{{ attendee.mobile_number or "—" }}</td>
-                <td>{{ "Approved" if attendee.approved else "Pending" }}</td>
+                <td>{% if not attendee.active %}Disabled{% elif attendee.approved %}Approved{% else %}Pending{% endif %}</td>
                 <td>
                     <form method="post" action="/admin/accounts/attendee/{{ attendee.id }}/reset-password"
                           onsubmit="return confirm('Issue a temporary password for this attendee?')">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <button type="submit">Reset password</button>
+                    </form>
+                    <form method="post"
+                          action="/admin/accounts/attendee/{{ attendee.id }}/{{ 'disable' if attendee.active else 'enable' }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit">{{ "Disable" if attendee.active else "Re-enable" }}</button>
+                    </form>
+                    <form method="post" action="/admin/accounts/attendee/{{ attendee.id }}/delete"
+                          onsubmit="return confirm('Delete this attendee? They lose access immediately.')">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" style="background:#c0392b; color:white;">Delete</button>
                     </form>
                 </td>
             </tr>

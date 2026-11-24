@@ -82,11 +82,13 @@ app.include_router(gallery_admin_router)
 from account_routes import router as account_router
 from attendee_routes import router as attendee_router
 from face_indexing_routes import router as face_indexing_router
+from organizer_routes import router as organizer_router
 from admin_account_routes import router as admin_account_router
 
 app.include_router(account_router)
 app.include_router(attendee_router)
 app.include_router(face_indexing_router)
+app.include_router(organizer_router)
 app.include_router(admin_account_router)
 
 
@@ -577,10 +579,13 @@ async def manage_organizers(request: Request):
         
         organizers = connection.execute(
             """
-            SELECT id, name, username, role, active
-            FROM admins
-            WHERE deleted_at IS NULL
-            ORDER BY id
+            SELECT a.id, a.name, a.username, a.role, a.active,
+                   COALESCE(p.can_approve_contributors, 0) AS can_approve_contributors,
+                   COALESCE(p.can_manage_photos, 0) AS can_manage_photos
+            FROM admins a
+            LEFT JOIN organizer_permissions p ON p.admin_id = a.id
+            WHERE a.deleted_at IS NULL
+            ORDER BY a.id
             """
         ).fetchall()
 

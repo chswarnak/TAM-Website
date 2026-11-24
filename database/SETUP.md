@@ -48,6 +48,33 @@ The migrations only add tables, columns and indexes. They never drop data.
 Columns that were already added by hand (for example
 `events.gallery_enabled`) are detected and left alone.
 
+## Photos already uploaded or indexed on the live server
+Migration `005_reconcile_indexed_photos` makes photos indexed before this
+release consistent **without calling AWS**:
+
+| State before migrating | After migrating |
+|---|---|
+| Authorized, faces stored, job `completed` | Unchanged and still searchable |
+| Faces stored but job missing or stuck in `processing` | Job set to `completed`, so the photo becomes searchable and is never indexed again |
+| Job stuck in `processing` with no faces stored | Job set to `failed`, so it is listed on Face Indexing and can be retried |
+| Uploaded but never authorized | Unchanged; listed on Face Indexing for an admin to authorize |
+| Faces stored but not authorized | Not searchable. Authorizing it on Face Indexing does **not** re-index it (stored faces are reused). |
+
+Indexing also refuses to send a photo to Rekognition again when faces are
+already stored for it in the configured collection, so no photo is indexed
+twice. Keep `TAM_REKOGNITION_COLLECTION_ID` unset so the live collection
+(`tam-diwali-2026-faces`) stays in use.
+
+Check the state before and after migrating (read-only):
+
+    python backend/indexing_report.py > before.txt
+    python backend/migrate.py
+    python backend/indexing_report.py > after.txt
+    diff before.txt after.txt
+
+`searchable` must not go down. Any `not_authorized` photos are waiting for
+an admin on the Face Indexing page (or for the event's automatic switch).
+
 ## Regenerate schema.sql after adding a migration
 
     python backend/migrate.py --dump-schema database/schema.sql

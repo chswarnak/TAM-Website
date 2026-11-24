@@ -24,3 +24,12 @@ Plan approved 2026-11-23 (see handoff.md). Test first for every step.
 - Not verified: real AWS Rekognition/SES/SMTP (no credentials in backend/.env).
 - TDD deviation: rekognition_service.py was rewritten before its tests
   (written right after, in the same commit).
+
+## Follow-up (2026-11-23)
+- [x] Attendee disable / re-enable / delete; immediate loss of access incl. search results
+- [x] Face Indexing thumbnails for can_manage_photos
+- [x] Organizer permission grant/revoke screen (Super Admin)
+- [x] Live indexed photos: migration 005, re-index guard, indexing_report.py, SETUP.md steps
+- [x] docs/deployment-checklist.md
+- [x] Local server stopped
+- Review: 124 tests pass; migration 005 + report checked on a copy of the local DB.

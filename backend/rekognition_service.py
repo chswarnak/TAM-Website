@@ -217,6 +217,28 @@ def process_photo_index_job(photo_id: int) -> dict:
     if not claim_photo_index_job(photo_id):
         return {"status": "not_claimed", "face_count": 0}
 
+    # Faces already stored (e.g. indexed before this release): finish the
+    # job from the database instead of indexing the same photo twice.
+    with _connect() as connection:
+        existing = connection.execute(
+            "SELECT COUNT(*) FROM photo_faces WHERE photo_id = ? AND collection_id = ?",
+            (photo_id, SETTINGS.collection_id)
+        ).fetchone()[0]
+        if existing:
+            connection.execute(
+                """
+                UPDATE photo_index_jobs
+                SET status = 'completed', face_count = ?,
+                    completed_at = CURRENT_TIMESTAMP, error_message = NULL
+                WHERE photo_id = ? AND collection_id = ? AND status = 'processing'
+                """,
+                (existing, photo_id, SETTINGS.collection_id)
+            )
+    if existing:
+        logger.info("Photo %s already has %d indexed face(s); not re-indexing",
+                    photo_id, existing)
+        return {"status": "completed", "face_count": existing}
+
     try:
         face_ids = index_event_photo(photo_id)
         with _connect() as connection:
