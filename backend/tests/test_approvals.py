@@ -55,9 +55,20 @@ def outbox(monkeypatch):
 
 
 def _register(kind, email):
-    new_client().post(f"/{kind}/register", headers=ORIGIN, json={
-        "full_name": f"Person {email}", "email": email,
-        "mobile_number": "5145550100", "password": "long-enough-1"})
+    """Pending account without triggering the on-registration send."""
+    if kind == "contributor":
+        create_contributor(name=f"Person {email}", email=email, approved=False)
+    else:
+        create_attendee(full_name=f"Person {email}", email=email, approved=False)
+
+
+def test_registration_emails_the_admin_immediately(outbox):
+    response = new_client().post("/attendee/register", headers=ORIGIN, json={
+        "full_name": "New Person", "email": "new@example.com",
+        "password": "long-enough-1"})
+    assert response.status_code == 200
+    assert len(outbox) == 1
+    assert "new@example.com" in outbox[0][2]
 
 
 def test_digest_lists_all_new_registrations_once(outbox):
