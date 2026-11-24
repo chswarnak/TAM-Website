@@ -31,3 +31,7 @@ tam-before-*/
 
 # Session secrets
 .session_secret
+
+# Local development data (databases, uploads, logs)
+local-data/
+.pytest_cache/

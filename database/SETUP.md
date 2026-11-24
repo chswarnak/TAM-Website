@@ -1,41 +1,58 @@
 # TAM Website - Database Setup
 
 ## Overview
-TAM Website uses SQLite for application data.
-The database structure is provided in schema.sql.
-Production database files must never be uploaded to GitHub.
+TAM Website uses SQLite. The schema is created and upgraded by
+`backend/migrate.py`, which applies the versioned, idempotent migrations
+in `backend/migrations.py` (the baseline is `database/migrations/000_baseline.sql`).
 
-## Database Configuration
-The backend uses the TAM_DB_PATH environment variable.
-If unset, it defaults to backend/smart_event.db.
+`database/schema.sql` is the fully migrated schema, for reference only. It is
+generated, and a test keeps it in sync, so don't edit it by hand.
 
-## Create a Development Database
-Run these commands from the repository root:
+Production database files must never be committed.
+
+## Database location
+The backend reads the `TAM_DB_PATH` environment variable.
+If it is unset, the default is `backend/smart_event.db`.
+
+## Create a development database
+From the repository root:
 
     mkdir -p local-data
-    sqlite3 local-data/smart_event.db < database/schema.sql
-
-Use this only for a new, empty development database.
-Never run schema initialization against the production database.
-
-## Configure the Database Path
-From the repository root, run:
-
     export TAM_DB_PATH="$PWD/local-data/smart_event.db"
+    python backend/migrate.py
 
-## Verify the Database
-Run:
+Then create the first Super Admin (interactive):
 
-    sqlite3 local-data/smart_event.db ".tables"
+    cd backend && python create_super_admin.py
 
-The exported schema contains 13 application tables.
+## Upgrade an existing database (including the live server)
+`migrate.py` is safe to run repeatedly. Before changing anything, it copies
+the database to `<db>.pre-migrate-<UTC timestamp>.bak` next to it.
 
-## Additional Setup
-Administrator account creation and AWS configuration are separate steps.
-Review application configuration before starting the backend.
+1. Stop the app (e.g. `sudo systemctl stop <service>`), so nothing writes
+   to the database during the migration.
+2. Make your own extra copy too:
+   `sqlite3 "$TAM_DB_PATH" ".backup '/home/<user>/smart_event-$(date +%F).db'"`
+3. Deploy the new code, then run, with the same environment as the app:
+   `python backend/migrate.py`
+   (or `python backend/migrate.py --db /path/to/smart_event.db`)
+4. Check the result:
+   `sqlite3 "$TAM_DB_PATH" "SELECT version FROM schema_migrations;"`
+   This should list `000_baseline` through the latest migration.
+5. Start the app again.
+
+To roll back, stop the app and restore the `.bak` file (or your own copy)
+over the database file, then deploy the previous code.
+
+The migrations only add tables, columns and indexes. They never drop data.
+Columns that were already added by hand (for example
+`events.gallery_enabled`) are detected and left alone.
+
+## Regenerate schema.sql after adding a migration
+
+    python backend/migrate.py --dump-schema database/schema.sql
 
 ## Security
-- Never commit SQLite database files.
-- Never commit .env files or authentication secrets.
+- Never commit SQLite database files, backups, `.env` files or secrets.
 - Keep production attendee information private.
 - Use a separate database for development and testing.
