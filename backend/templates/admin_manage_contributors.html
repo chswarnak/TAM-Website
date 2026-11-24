@@ -95,6 +95,7 @@
                     <th>S.No.</th>
                     <th>Contributor ID</th>
                     <th>Name</th>
+                    <th>Login (email / username)</th>
                     <th>Mobile</th>
                     <th>Status</th>
                     <th>Approved By</th>
@@ -112,6 +113,25 @@
                     <td>{{ loop.index }}</td>
                     <td>{{ contributor.id }}</td>
                     <td>{{ contributor.name }}</td>
+                    <td>
+                        {% if contributor.email %}
+                            {{ contributor.email }}{% if contributor.username %} / {{ contributor.username }}{% endif %}
+                        {% else %}
+                            <strong style="color:#c0392b;">No login set — cannot log in</strong>
+                        {% endif %}
+                        <details>
+                            <summary>{% if contributor.email %}Change login{% else %}Set login{% endif %}</summary>
+                            <form action="/admin/accounts/contributor/{{ contributor.id }}/set-login"
+                                  method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <input type="email" name="email" required placeholder="email"
+                                       value="{{ contributor.email or '' }}">
+                                <input type="text" name="username" placeholder="username (optional)"
+                                       value="{{ contributor.username or '' }}">
+                                <button type="submit">Save login</button>
+                            </form>
+                        </details>
+                    </td>
                     <td>{{ contributor.mobile_number or "Not provided" }}</td>
                         
                         
@@ -238,7 +258,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="9">No contributors registered yet.</td>
+                    <td colspan="10">No contributors registered yet.</td>
                 </tr>
                 {% endfor %}
             </tbody>

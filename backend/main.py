@@ -30,7 +30,19 @@ from aws_config import (
 
 
 
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from dotenv import load_dotenv
+import logging
+
+logging.basicConfig(
+    level=SETTINGS.log_level,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
+logger = logging.getLogger("tam")
+
+# Errors an AWS credential/bucket check can raise (bad keys, network,
+# missing configuration). Anything else is a bug and should surface.
+AWS_CHECK_ERRORS = (ClientError, BotoCoreError, RuntimeError, ValueError, OSError)
 
 load_dotenv()
 
@@ -55,53 +67,25 @@ app.include_router(gallery_pages_router)
 app.include_router(gallery_api_router)
 app.include_router(gallery_admin_router)
 
+from account_routes import router as account_router
+from admin_account_routes import router as admin_account_router
+
+app.include_router(account_router)
+app.include_router(admin_account_router)
+
 
 
 # Browser session configuration
-SESSION_SECRET = os.environ["SESSION_SECRET"]
-
-
-# Create a serializer for signed CSRF tokens.
-csrf_serializer = URLSafeTimedSerializer(
+import accounts
+from admin_auth import (
     SESSION_SECRET,
-    salt="tam-admin-csrf"
+    authenticate_admin,
+    create_csrf_token,
+    has_admin_permission,
+    password_hasher,
+    require_admin_permission,
+    verify_csrf_token,
 )
-
-
-
-def create_csrf_token(admin_id: int, csrf_nonce: str) -> str:
-    """Create a signed CSRF token for the current login session."""
-    return csrf_serializer.dumps({
-        "admin_id": admin_id,
-        "csrf_nonce": csrf_nonce
-    })
-
-
-def verify_csrf_token(
-    token: str,
-    admin_id: int,
-    csrf_nonce: str
-) -> bool:
-    """Verify the token belongs to the current login session."""
-    from itsdangerous import BadSignature, SignatureExpired
-
-    if not csrf_nonce:
-        return False
-
-    try:
-        data = csrf_serializer.loads(
-            token,
-            max_age=3600
-        )
-
-        return (
-            data.get("admin_id") == admin_id
-            and data.get("csrf_nonce") == csrf_nonce
-        )
-
-    except (BadSignature, SignatureExpired):
-        return False
-
 
 
 app.add_middleware(
@@ -181,134 +165,6 @@ def is_upload_window_open(event_id=EVENT_ID, check_at=None):
         return False
 
 
-class ContributorRegistration(BaseModel):
-    name: str
-    mobile_number: str
-    password: str
-
-
-class ContributorLogin(BaseModel):
-    # TAM-CONTRIBUTOR-NAME-LOGIN-V1
-    name: str | None = None
-    contributor_id: int | None = None
-    password: str
-
-
-# Verify administrator access
-def verify_admin(provided_secret: str):
-    expected_secret = os.getenv("ADMIN_SECRET")
-
-    if not expected_secret:
-        raise HTTPException(
-            status_code=503,
-            detail="Administrator authentication is not configured"
-        )
-
-    if not secrets.compare_digest(
-        provided_secret,
-        expected_secret
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail="Administrator access denied"
-        )
-
-    return True
-
-
-from argon2.exceptions import VerifyMismatchError, VerificationError
-
-password_hasher = PasswordHasher()
-
-def authenticate_admin(username: str, password: str):
-    with sqlite3.connect(DB_PATH) as connection:
-        connection.row_factory = sqlite3.Row
-
-        admin = connection.execute(
-            """
-            SELECT id, name, username, password_hash, role, must_change_password
-            FROM admins
-            WHERE username = ?
-            AND active = 1
-            AND deleted_at IS NULL
-            """,
-            (username.strip().lower(),)
-        ).fetchone()
-
-    if admin is None:
-        return None
-
-    try:
-        password_hasher.verify(
-            admin["password_hash"],
-            password
-        )
-    except (VerifyMismatchError, VerificationError):
-        return None
-
-    return {
-        "id": admin["id"],
-        "name": admin["name"],
-        "username": admin["username"],
-        "role": admin["role"],
-        "must_change_password": bool(admin["must_change_password"])
-    }
-
-
-def has_admin_permission(admin_id: int, permission: str) -> bool:
-    allowed_permissions = {
-        "can_approve_contributors",
-        "can_manage_photos"
-    }
-
-    if permission not in allowed_permissions:
-        return False
-
-    with sqlite3.connect(DB_PATH) as connection:
-        connection.row_factory = sqlite3.Row
-
-        admin = connection.execute(
-            """
-            SELECT role, must_change_password
-            FROM admins
-            WHERE id = ?
-            AND active = 1
-            AND deleted_at IS NULL
-            """,
-            (admin_id,)
-        ).fetchone()
-        # Reject missing, disabled, or deleted administrators first.
-        if admin is None:
-            return False
-
-        # Do not grant permissions until password setup is complete.
-        if admin["must_change_password"]:
-            return False
-
-        if admin["role"] == "super_admin":
-            return True
-
-        if admin["role"] != "admin":
-            return False
-
-        permissions = connection.execute(
-            """
-            SELECT can_approve_contributors, can_manage_photos
-            FROM organizer_permissions
-            WHERE admin_id = ?
-            """,
-            (admin_id,)
-        ).fetchone()
-
-        if permissions is None:
-            return False
-
-        return bool(permissions[permission])
-
-
-
-
-
 @app.get("/")
 def home():
     return RedirectResponse(
@@ -323,8 +179,7 @@ from uuid import uuid4
 from PIL import Image, UnidentifiedImageError
 from io import BytesIO
 
-UPLOAD_DIR = Path(__file__).parent / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
+UPLOAD_DIR = SETTINGS.upload_dir
 
 
 @app.post("/upload")
@@ -333,14 +188,8 @@ async def upload_photo(
     file: UploadFile = File(...)
 ):
     # Identify the contributor from their authenticated session.
-    contributor_id = request.session.get("contributor_id")
+    contributor_id = accounts.require_account(request, "contributor")["id"]
 
-    if contributor_id is None:
-        raise HTTPException(
-            status_code=401,
-            detail="Contributor login required before uploading"
-        )
-    
     # Enforce the event upload schedule on the server.
     if not is_upload_window_open(EVENT_ID):
         raise HTTPException(
@@ -411,14 +260,9 @@ async def upload_photo(
             detail="Contributor is not approved or upload access is disabled"
         )
 
-    # Generate folder name using database information
-    contributor_id = (
-        f"contributor-{contributor[0]:03d}-"
-        f"{contributor[1].lower()}"
-    )
-
-
-    contributor_folder = UPLOAD_DIR / event_id / contributor_id
+    # Folder names use only the numeric account id. Display names are
+    # user-controlled text and must never become part of a path.
+    contributor_folder = UPLOAD_DIR / event_id / f"contributor-{contributor[0]:03d}"
     contributor_folder.mkdir(parents=True, exist_ok=True)
 
     filepath = contributor_folder / filename
@@ -466,7 +310,11 @@ async def upload_photo(
             photo_id = cursor.lastrowid
             connection.commit()
 
-    except Exception:
+    except (ClientError, BotoCoreError, OSError, sqlite3.Error, RuntimeError):
+        logger.exception(
+            "Upload failed for contributor %s (file %s, s3=%s)",
+            contributor[0], filename, s3_result
+        )
         # Remove the newly created local file
         # if S3 upload or database registration fails.
         filepath.unlink(missing_ok=True)
@@ -479,9 +327,9 @@ async def upload_photo(
                     Bucket=s3_result["bucket"],
                     Key=s3_result["key"]
                 )
-            except Exception:
-                # A failed cleanup must be investigated.
-                print("WARNING: S3 cleanup failed:", s3_result)
+            except (ClientError, BotoCoreError):
+                # An orphaned S3 object must be investigated.
+                logger.exception("S3 cleanup failed for %s", s3_result)
 
         raise HTTPException(
             status_code=503,
@@ -495,305 +343,6 @@ async def upload_photo(
         "status": "available",
         "s3_key": s3_result["key"]
     } 
-
-
-@app.post("/register")
-def register_contributor(data: ContributorRegistration):
-    name = data.name.strip()
-    mobile = data.mobile_number.strip()
-    password = data.password
-
-    if len(password) < 8:
-        raise HTTPException(
-            status_code=400,
-            detail="Password must contain at least 8 characters"
-        )
-
-    password_hash = password_hasher.hash(password)
-
-
-    if not name or not mobile:
-        raise HTTPException(
-            status_code=400,
-            detail="Name and mobile number are required"
-        )
-
-    # TAM-UNIQUE-CONTRIBUTOR-NAME-V1
-    # Serialize registration writes to prevent concurrent duplicates.
-    with sqlite3.connect(DB_PATH, timeout=15) as connection:
-        connection.execute("BEGIN IMMEDIATE")
-
-        existing = connection.execute(
-            """
-            SELECT id
-            FROM contributors
-            WHERE event_id = ?
-              AND LOWER(TRIM(name)) = LOWER(TRIM(?))
-            LIMIT 1
-            """,
-            (EVENT_ID, name)
-        ).fetchone()
-
-        if existing is not None:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "Contributor name already exists. "
-                    "Please choose a different name."
-                )
-            )
-
-        cursor = connection.execute(
-        
-            """
-            INSERT INTO contributors
-                (name, mobile_number, event_id, approved, password_hash)
-            VALUES (?, ?, ?, 0, ?)
-            """,
-            (name, mobile, EVENT_ID, password_hash)
-        )
-        contributor_id = cursor.lastrowid
-        connection.commit()
-
-    return {
-        "message": "Registration submitted successfully",
-        "contributor_id": contributor_id,
-        "event_id": EVENT_ID,
-        "status": "pending_approval"
-    }
-
-
-@app.post("/contributor/login")
-def login_contributor(
-    data: ContributorLogin,
-    request: Request
-):
-    # Look up contributor by registered name.
-    # Keep legacy ID login temporarily for compatibility.
-    contributor = None
-
-    with sqlite3.connect(DB_PATH) as connection:
-        connection.row_factory = sqlite3.Row
-
-        if data.name is not None and data.name.strip():
-            matches = connection.execute(
-                """
-                SELECT id, name, password_hash,
-                       approved, active, deleted_at
-                FROM contributors
-                WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
-                  AND event_id = ?
-                LIMIT 2
-                """,
-                (data.name.strip(), EVENT_ID)
-            ).fetchall()
-
-            # Fail closed when names are ambiguous.
-            if len(matches) == 1:
-                contributor = matches[0]
-
-        elif data.contributor_id is not None:
-            contributor = connection.execute(
-                """
-                SELECT id, name, password_hash,
-                       approved, active, deleted_at
-                FROM contributors
-                WHERE id = ? AND event_id = ?
-                """,
-                (data.contributor_id, EVENT_ID)
-            ).fetchone()
-
-    # Reject unknown accounts and accounts without passwords.
-    if contributor is None or not contributor["password_hash"]:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid contributor credentials"
-        )
-
-    # Verify the submitted password.
-    try:
-        password_hasher.verify(
-            contributor["password_hash"],
-            data.password
-        )
-    except Exception:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid contributor credentials"
-        )
-
-    # Check account status.
-    if not contributor["active"] or contributor["deleted_at"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Contributor account is disabled"
-        )
-
-    if not contributor["approved"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Contributor registration is awaiting approval"
-        )
-
-    # Create an authenticated contributor session.
-    request.session.clear()
-    request.session["contributor_id"] = contributor["id"]
-
-    return {
-        "message": "Contributor login successful",
-        "contributor_id": contributor["id"],
-        "name": contributor["name"]
-    }
-
-
-
-from fastapi import Header
-
-
-@app.post("/admin/approve/{contributor_id}")
-def approve_contributor(
-    contributor_id: int,
-    request: Request,
-    csrf_token: str = Form(...)
-):
-    # Identify the logged-in organizer
-    admin_id = request.session.get("admin_id")
-
-    if admin_id is None:
-        raise HTTPException(
-            status_code=401,
-            detail="Administrator login required"
-        )
-
-    
-    # Verify the request belongs to the current login session.
-    csrf_nonce = request.session.get("csrf_nonce", "")
-
-    if not verify_csrf_token(
-        csrf_token,
-        admin_id,
-        csrf_nonce
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail="Invalid or expired security token"
-        )
-
-
-
-    # Approve only a contributor for this event
-    with sqlite3.connect(DB_PATH) as connection:
-        
-        cursor = connection.execute(
-            """
-            UPDATE contributors
-            SET approved = 1,
-                approved_by_admin_id = ?,
-                approved_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            AND event_id = ?
-            AND approved = 0
-            AND active = 1
-            AND deleted_at IS NULL
-            """,
-            (admin_id, contributor_id, EVENT_ID)
-        )
-
-              
-        connection.commit()
-
-        if cursor.rowcount == 0:
-            raise HTTPException(
-                status_code=404,
-                detail="Contributor not found for this event"
-            )
-
-        return RedirectResponse(
-        url="/admin/contributors/manage",
-        status_code=303
-    )
-
-
-
-
-@app.get("/admin/contributors")
-def list_contributors(
-    x_admin_secret: str = Header(default="")
-):
-    # Only authorized organizers can access this endpoint
-    verify_admin(x_admin_secret)
-
-    with sqlite3.connect(DB_PATH) as connection:
-        connection.row_factory = sqlite3.Row
-
-        contributors = connection.execute(
-            """
-            SELECT id, name, mobile_number, approved
-            FROM contributors
-            WHERE event_id = ?
-            ORDER BY id
-            """,
-            (EVENT_ID,)
-        ).fetchall()
-
-    return {
-        "event_id": EVENT_ID,
-        "total_contributors": len(contributors),
-        "contributors": [
-            {
-                "id": row["id"],
-                "name": row["name"],
-                "mobile_number": (
-                    "****" + row["mobile_number"][-4:]
-                    if row["mobile_number"] else None
-                ),
-                "status": (
-                    "approved" if row["approved"] == 1
-                    else "pending"
-                )
-            }
-            for row in contributors
-        ]
-    }
-
-
-
-@app.get("/admin/contributors/pending")
-def list_pending_contributors(
-    x_admin_secret: str = Header(default="")
-):
-    # Verify administrator access
-    verify_admin(x_admin_secret)
-
-    with sqlite3.connect(DB_PATH) as connection:
-        connection.row_factory = sqlite3.Row
-
-        pending = connection.execute(
-            """
-            SELECT id, name, mobile_number
-            FROM contributors
-            WHERE event_id = ? AND approved = 0
-            ORDER BY id
-            """,
-            (EVENT_ID,)
-        ).fetchall()
-
-    return {
-        "event_id": EVENT_ID,
-        "total_pending": len(pending),
-        "contributors": [
-            {
-                "id": row["id"],
-                "name": row["name"],
-                "mobile_number": (
-                    "****" + row["mobile_number"][-4:]
-                    if row["mobile_number"] else None
-                ),
-                "status": "pending"
-            }
-            for row in pending
-        ]
-    }
 
 
 @app.get("/admin/login", response_class=HTMLResponse)
@@ -940,7 +489,6 @@ async def admin_logout(request: Request):
 @app.get("/admin/organizers", response_class=HTMLResponse)
 async def manage_organizers(request: Request):
     admin_id = request.session.get("admin_id")
-    print("CSRF session initialized:", bool(request.session.get("csrf_nonce")))
 
     if admin_id is None:
         return RedirectResponse(
@@ -1136,7 +684,6 @@ async def disable_organizer(
 
 ):
     admin_id = request.session.get("admin_id")
-    print("CSRF session initialized:", bool(request.session.get("csrf_nonce")))
 
 
     if admin_id is None:
@@ -1148,10 +695,6 @@ async def disable_organizer(
     
     # Verify that the CSRF token belongs to the current login session.
     csrf_nonce = request.session.get("csrf_nonce", "")
-    print(
-        "Disable CSRF verification:",
-        verify_csrf_token(csrf_token, admin_id, csrf_nonce)
-    )
 
     if not verify_csrf_token(
         csrf_token,
@@ -1400,7 +943,7 @@ async def change_admin_password(
         # Verify the existing temporary password.
         try:
             password_hasher.verify(admin[0], current_password)
-        except Exception:
+        except (VerifyMismatchError, VerificationError, InvalidHashError):
             raise HTTPException(
                 status_code=400,
                 detail="Incorrect temporary password"
@@ -1491,6 +1034,8 @@ async def manage_contributors(request: Request):
             SELECT
                 c.id,
                 c.name,
+                c.email,
+                c.username,
                 c.mobile_number,
                 c.approved,
                 c.uploads_enabled,
@@ -1722,66 +1267,27 @@ def delete_contributor(
     )
 
 
-@app.get("/contributor/register", response_class=HTMLResponse)
-async def contributor_register_page(request: Request):
-    # Display the contributor self-registration page.
-    # Actual registration is handled by the existing POST /register API.
-    return templates.TemplateResponse(
-        request=request,
-        name="contributor_register.html",
-        context={}
-    )
-
-
-@app.get("/contributor/login", response_class=HTMLResponse)
-async def contributor_login_page(request: Request):
-    return templates.TemplateResponse(
-        request=request,
-        name="contributor_login.html",
-        context={}
-    )
+def _contributor_page_guard(request: Request, need_uploads: bool):
+    """Return (account, None) or (None, response) for contributor pages."""
+    account = accounts.session_account(request, "contributor")
+    if account is None:
+        return None, RedirectResponse(url="/contributor/login", status_code=303)
+    if account["must_change_password"]:
+        return None, RedirectResponse(url="/account/change-password", status_code=303)
+    if need_uploads and not account["uploads_enabled"]:
+        raise HTTPException(status_code=403,
+                            detail="Photo uploads are disabled for your account")
+    return account, None
 
 
 @app.get("/contributor/upload", response_class=HTMLResponse)
 async def contributor_upload_page(request: Request):
-
-    # Check whether the contributor is logged in.
-    contributor_id = request.session.get("contributor_id")
-
-    if contributor_id is None:
-        return RedirectResponse(
-            url="/contributor/login",
-            status_code=303
-        )
-
-    # Verify current contributor account permissions.
-    with sqlite3.connect(DB_PATH) as connection:
-        contributor = connection.execute(
-            """
-            SELECT id
-            FROM contributors
-            WHERE id = ?
-              AND event_id = ?
-              AND approved = 1
-              AND uploads_enabled = 1
-              AND active = 1
-              AND deleted_at IS NULL
-            """,
-            (contributor_id, EVENT_ID)
-        ).fetchone()
-
-    if contributor is None:
-        raise HTTPException(
-            status_code=403,
-            detail="Contributor is not authorized to upload photos"
-        )
-
+    account, redirect = _contributor_page_guard(request, need_uploads=True)
+    if redirect:
+        return redirect
     return templates.TemplateResponse(
-        request=request,
-        name="contributor_upload.html",
-        context={}
+        request=request, name="contributor_upload.html", context={}
     )
-
 
 @app.get("/admin/events", response_class=HTMLResponse)
 async def manage_events(request: Request):
@@ -1954,7 +1460,8 @@ async def manage_aws(request: Request):
                 "AWS authenticated | S3 bucket check: successful"
             )
 
-        except Exception as s3_error:
+        except (ClientError, BotoCoreError) as s3_error:
+            logger.warning("S3 bucket check failed: %s", s3_error)
             error_code = ""
 
             if hasattr(s3_error, "response"):
@@ -1980,7 +1487,8 @@ async def manage_aws(request: Request):
                     "AWS authenticated | S3 bucket check: unavailable"
                 )
 
-    except Exception:
+    except AWS_CHECK_ERRORS as aws_error:
+        logger.warning("AWS authentication check failed: %s", aws_error)
         aws_status = "AWS authentication unavailable"
         aws_identity = "Credential source not verified"
 
@@ -2042,18 +1550,6 @@ async def save_aws_settings(request: Request):
     submitted_token = str(form.get("csrf_token", ""))
     session_nonce = request.session.get("csrf_nonce", "")
 
-    print(
-        "AWS CSRF DIAGNOSTIC:",
-        "form_token_present=", bool(submitted_token),
-        "session_nonce_present=", bool(session_nonce),
-        "admin_id_present=", bool(admin_id),
-        "token_valid=", verify_csrf_token(
-            submitted_token,
-            admin_id,
-            session_nonce
-        ),
-        flush=True
-    )
 
 
     if not verify_csrf_token(
@@ -2143,9 +1639,10 @@ async def save_aws_settings(request: Request):
                 "and saved to TAM configuration."
             )
 
-        except Exception:
-            # Do not expose AWS error details
-            # or credential values to the browser.
+        except AWS_CHECK_ERRORS:
+            # Log the cause for the operator, but do not expose AWS error
+            # details or credential values to the browser.
+            logger.exception("Verifying or saving AWS credentials failed")
             aws_message = (
                 "Unable to verify or save AWS credentials. "
                 "Please check the keys and permissions."
@@ -2302,44 +1799,12 @@ async def save_event_settings(
 
 @app.get("/contributor/camera", response_class=HTMLResponse)
 async def contributor_camera_page(request: Request):
-
-    # Require contributor login.
-    contributor_id = request.session.get("contributor_id")
-
-    if contributor_id is None:
-        return RedirectResponse(
-            url="/contributor/login",
-            status_code=303
-        )
-
-    # Check whether the contributor is approved and active.
-    with sqlite3.connect(DB_PATH) as connection:
-        contributor = connection.execute(
-            """
-            SELECT id
-            FROM contributors
-            WHERE id = ?
-              AND event_id = ?
-              AND approved = 1
-              AND uploads_enabled = 1
-              AND active = 1
-              AND deleted_at IS NULL
-            """,
-            (contributor_id, EVENT_ID)
-        ).fetchone()
-
-    if contributor is None:
-        raise HTTPException(
-            status_code=403,
-            detail="Contributor is not authorized to use Event Camera"
-        )
-
+    account, redirect = _contributor_page_guard(request, need_uploads=True)
+    if redirect:
+        return redirect
     return templates.TemplateResponse(
-        request=request,
-        name="contributor_camera.html",
-        context={}
+        request=request, name="contributor_camera.html", context={}
     )
-
 
 @app.get("/contributor/upload-status")
 def contributor_upload_status():
@@ -2376,58 +1841,17 @@ def contributor_upload_status():
 
 @app.get("/contributor/dashboard", response_class=HTMLResponse)
 async def contributor_dashboard(request: Request):
-
-    # Require contributor login.
-    contributor_id = request.session.get("contributor_id")
-
-    if contributor_id is None:
-        return RedirectResponse(
-            url="/contributor/login",
-            status_code=303
-        )
-
-    # Check that the contributor is approved and active.
-    with sqlite3.connect(DB_PATH) as connection:
-        contributor = connection.execute(
-            """
-            SELECT id, name
-            FROM contributors
-            WHERE id = ?
-              AND event_id = ?
-              AND approved = 1
-              AND active = 1
-              AND deleted_at IS NULL
-            """,
-            (contributor_id, EVENT_ID)
-        ).fetchone()
-
-    if contributor is None:
-        raise HTTPException(
-            status_code=403,
-            detail="Contributor account is not authorized"
-        )
-
+    account, redirect = _contributor_page_guard(request, need_uploads=False)
+    if redirect:
+        return redirect
     return templates.TemplateResponse(
         request=request,
         name="contributor_dashboard.html",
         context={
-            "contributor_name": contributor[1],
-            "contributor_id": contributor[0]
+            "contributor_name": account["name"],
+            "contributor_id": account["id"]
         }
     )
-
-
-@app.post("/contributor/logout")
-async def contributor_logout(request: Request):
-
-    # Clear the contributor's authenticated session.
-    request.session.clear()
-
-    return RedirectResponse(
-        url="/contributor/login",
-        status_code=303
-    )
-
 
 @app.get("/api/find-my-photos/consent-status")
 async def guest_consent_status(request: Request):

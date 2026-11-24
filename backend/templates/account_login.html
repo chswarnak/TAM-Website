@@ -6,7 +6,7 @@
     <meta name="viewport"
           content="width=device-width, initial-scale=1.0">
 
-    <title>TAM Member Login</title>
+    <title>TAM | {{ label }} Login</title>
 
     <style>
         body {
@@ -197,42 +197,35 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 
 <body>
     <div class="container tam-exact-border">
-        <h1>TAM Member Login</h1>
-        <p>Sign in to upload your event photos</p>
+        <h1>TAM {{ label }} Login</h1>
+        <p>{{ purpose }}</p>
 
         <form id="loginForm">
-            <label for="contributor_name">Contributor Name</label>
-            <input type="text"
-                   id="contributor_name"
-                   required>
+            <label for="identifier">Email or username</label>
+            <input type="text" id="identifier" required autocomplete="username">
 
             <label for="password">Password</label>
-            <input type="password"
-                   id="password"
-                   required>
+            <input type="password" id="password" required
+                   autocomplete="current-password">
 
             <button type="submit">Login</button>
         </form>
-    <div style="text-align:center; margin-top:20px;">
-        <p style="color:#555; font-size:14px;">
-            New contributor?
+
+        {% if email_enabled %}
+        <p style="text-align:center; margin-top:14px;">
+            <a href="/account/forgot-password?kind={{ kind }}">Forgot your password?</a>
         </p>
+        {% endif %}
 
-        <a href="/contributor/register"
-           style="
-               display:inline-block;
-               padding:12px 22px;
-               background:#702080;
-               color:white;
-               text-decoration:none;
-               border-radius:8px;
-               font-weight:bold;
-               font-size:15px;
-           ">
-            Register as Contributor
-        </a>
-    </div>
-
+        <div style="text-align:center; margin-top:20px;">
+            <p style="color:#555; font-size:14px;">New {{ label | lower }}?</p>
+            <a href="/{{ kind }}/register"
+               style="display:inline-block; padding:12px 22px; background:#702080;
+                      color:white; text-decoration:none; border-radius:8px;
+                      font-weight:bold; font-size:15px;">
+                Register as {{ label }}
+            </a>
+        </div>
 
         <p id="message" role="status"></p>
     </div>
@@ -241,42 +234,30 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
         document.getElementById("loginForm")
             .addEventListener("submit", async function(event) {
                 event.preventDefault();
-
-                const name = document
-        .getElementById("contributor_name")
-        .value.trim();
-                const password =
-                    document.getElementById("password").value;
-
                 const message = document.getElementById("message");
                 message.textContent = "Signing in...";
 
                 try {
-                    const response = await fetch("/contributor/login", {
+                    const response = await fetch("/{{ kind }}/login", {
                         method: "POST",
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
+                        headers: {"Content-Type": "application/json"},
                         credentials: "same-origin",
                         body: JSON.stringify({
-                            name,
-                            password
+                            identifier: document.getElementById("identifier").value.trim(),
+                            password: document.getElementById("password").value
                         })
                     });
-
                     const result = await response.json();
 
                     if (response.ok) {
-                        message.textContent = "Login successful!";
-                        window.location.href = "/contributor/dashboard";
-                        // Upload page will be connected next.
+                        window.location.href = result.redirect;
                     } else {
-                        message.textContent =
-                            result.detail || "Login failed.";
+                        message.textContent = typeof result.detail === "string"
+                            ? result.detail
+                            : "Login failed.";
                     }
                 } catch (error) {
-                    message.textContent =
-                        "Connection error. Please try again.";
+                    message.textContent = "Connection error. Please try again.";
                 }
             });
     </script>

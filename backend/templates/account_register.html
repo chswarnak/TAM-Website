@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TAM | Contributor Registration</title>
+    <title>TAM | {{ label }} Registration</title>
 
     <!-- TAM-REGISTRATION-FOUR-CORNERS-V1 -->
 <style>
@@ -303,47 +303,49 @@ body > .card {
 
 <body>
     <div class="card tam-exact-border">
-        <h1>TAM Contributor Registration</h1>
+        <h1>TAM {{ label }} Registration</h1>
 
         <p class="subtitle">
-            Register to contribute photographs to TAM events.
-            Your account requires administrator approval.
+            {{ purpose }}
+            Your account must be approved by the TAM administrator
+            before you can log in.
         </p>
 
         <form id="registrationForm">
-            <label for="name">Full Name</label>
-            <input id="name" type="text" required maxlength="100">
+            <label for="full_name">Full name (shown to organizers only)</label>
+            <input id="full_name" type="text" required maxlength="100"
+                   autocomplete="name">
 
-            <label for="mobile">Mobile Number</label>
-            <input id="mobile" type="tel" required maxlength="30">
+            <label for="email">Email (used to log in)</label>
+            <input id="email" type="email" required maxlength="254"
+                   autocomplete="email">
+
+            <label for="username">Username (optional, no spaces)</label>
+            <input id="username" type="text" maxlength="30"
+                   pattern="[A-Za-z0-9._\-]{3,30}" autocomplete="username"
+                   title="3-30 letters, numbers, dots, dashes or underscores">
+
+            <label for="mobile">Mobile number{% if not mobile_required %} (optional){% endif %}</label>
+            <input id="mobile" type="tel" maxlength="20"
+                   {% if mobile_required %}required{% endif %} autocomplete="tel">
 
             <label for="password">Password</label>
-            <input
-                id="password"
-                type="password"
-                required
-                minlength="8"
-                autocomplete="new-password"
-            >
+            <input id="password" type="password" required minlength="8"
+                   autocomplete="new-password">
 
             <label for="confirmPassword">Confirm Password</label>
-            <input
-                id="confirmPassword"
-                type="password"
-                required
-                minlength="8"
-                autocomplete="new-password"
-            >
+            <input id="confirmPassword" type="password" required minlength="8"
+                   autocomplete="new-password">
 
             <button id="registerButton" type="submit">
-                Register as Contributor
+                Register as {{ label }}
             </button>
         </form>
 
         <div id="message" class="message" role="status" aria-live="polite"></div>
 
-        <a class="login-link" href="/contributor/login">
-            Already registered? Contributor Login
+        <a class="login-link" href="/{{ kind }}/login">
+            Already registered? {{ label }} Login
         </a>
     </div>
 
@@ -351,28 +353,14 @@ body > .card {
         const form = document.getElementById("registrationForm");
         const message = document.getElementById("message");
         const button = document.getElementById("registerButton");
+        const value = (id) => document.getElementById(id).value.trim();
 
         form.addEventListener("submit", async function(event) {
             event.preventDefault();
 
-            const name = document.getElementById("name").value.trim();
-            const mobile_number =
-                document.getElementById("mobile").value.trim();
-
-            const password =
-                document.getElementById("password").value;
-
-            const confirmPassword =
-                document.getElementById("confirmPassword").value;
-
-            if (password !== confirmPassword) {
+            const password = document.getElementById("password").value;
+            if (password !== document.getElementById("confirmPassword").value) {
                 message.textContent = "Passwords do not match.";
-                return;
-            }
-
-            if (password.length < 8) {
-                message.textContent =
-                    "Password must contain at least 8 characters.";
                 return;
             }
 
@@ -380,39 +368,33 @@ body > .card {
             message.textContent = "Submitting registration...";
 
             try {
-                const response = await fetch("/register", {
+                const response = await fetch("/{{ kind }}/register", {
                     method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
+                    headers: {"Content-Type": "application/json"},
                     credentials: "same-origin",
                     body: JSON.stringify({
-                        name,
-                        mobile_number,
+                        full_name: value("full_name"),
+                        email: value("email"),
+                        username: value("username") || null,
+                        mobile_number: value("mobile") || null,
                         password
                     })
                 });
-
                 const result = await response.json();
 
                 if (response.ok) {
                     form.hidden = true;
-
-                    // TAM-REGISTRATION-NAME-LOGIN-MESSAGE-V1
                     message.textContent =
-                        "Registration submitted successfully! " +
-                        "Your account is awaiting administrator approval. " +
-                        "Once approved, log in using your registered " +
-                        "contributor name and password.";
+                        "Registration submitted. The TAM administrator will " +
+                        "review it. Once approved, log in with your email " +
+                        "(or username) and password.";
                 } else {
-                    message.textContent =
-                        typeof result.detail === "string"
-                            ? result.detail
-                            : "Registration failed. Please try again.";
+                    message.textContent = typeof result.detail === "string"
+                        ? result.detail
+                        : "Registration failed. Please check the form.";
                 }
             } catch (error) {
-                message.textContent =
-                    "Connection error. Please try again.";
+                message.textContent = "Connection error. Please try again.";
             } finally {
                 button.disabled = false;
             }
