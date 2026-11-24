@@ -1,6 +1,7 @@
 """Admin actions on contributor and attendee accounts."""
 
 import logging
+import secrets
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -82,7 +83,21 @@ def set_account_login(
 
 
 def _manage_page(kind: str) -> str:
-    return "/admin/contributors/manage" if kind == "contributor" else "/admin/dashboard"
+    return ("/admin/contributors/manage" if kind == "contributor"
+            else "/admin/attendees/manage")
+
+
+@router.get("/admin/attendees/manage", response_class=HTMLResponse)
+def manage_attendees(request: Request):
+    if not isinstance(request.session.get("admin_id"), int):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    admin_id = require_admin_permission(request, APPROVE_PERMISSION)
+    return templates.TemplateResponse(
+        request=request, name="admin_manage_attendees.html",
+        context={"attendees": accounts.list_accounts("attendee"),
+                 "csrf_token": create_csrf_token(
+                     admin_id, request.session.get("csrf_nonce", ""))},
+    )
 
 
 # ------------------------------------------------------- one-click approval
@@ -156,3 +171,27 @@ def approve_all_pending(request: Request, csrf_token: str = Form(...)):
         total += accounts.approve(kind, pending, admin_id)
     logger.info("Admin %s approved all %d pending account(s)", admin_id, total)
     return RedirectResponse(url="/admin/dashboard#pending", status_code=303)
+
+
+# ---------------------------------------------------------- password reset
+
+@router.post("/admin/accounts/{kind}/{account_id}/reset-password",
+             response_class=HTMLResponse)
+def admin_reset_password(kind: str, account_id: int, request: Request,
+                         csrf_token: str = Form(...)):
+    """Issue a temporary password; the user must change it at next login."""
+    admin_id = require_admin_permission(request, APPROVE_PERMISSION, csrf_token)
+    if kind not in accounts.KINDS:
+        raise HTTPException(status_code=404, detail="Unknown account type")
+    temporary = secrets.token_urlsafe(9)
+    try:
+        accounts.change_password(kind, account_id, temporary, must_change=True)
+    except accounts.AccountError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    logger.info("Admin %s reset the password of %s %s", admin_id, kind, account_id)
+    return templates.TemplateResponse(
+        request=request, name="admin_temp_password.html",
+        headers={"Cache-Control": "no-store"},
+        context={"temporary": temporary, "kind": kind, "account_id": account_id,
+                 "back": _manage_page(kind)},
+    )

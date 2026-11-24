@@ -208,14 +208,37 @@ def authenticate(kind: str, identifier: str, password: str) -> dict:
 
 def change_password(kind: str, account_id: int, new_password: str,
                     must_change: bool = False) -> None:
+    """Set a new password. must_change=True makes it a temporary password."""
     table = table_for(kind)
     validate_password(new_password)
     with _connect() as connection:
-        connection.execute(
+        cursor = connection.execute(
             f"UPDATE {table} SET password_hash = ?, must_change_password = ? "
-            "WHERE id = ?",
-            (password_hasher.hash(new_password), int(must_change), account_id)
+            "WHERE id = ? AND event_id = ? AND deleted_at IS NULL",
+            (password_hasher.hash(new_password), int(must_change), account_id,
+             SETTINGS.event_id)
         )
+    if cursor.rowcount == 0:
+        raise AccountError("Account not found.")
+
+
+def find_active_by_email(kind: str, email: str) -> int | None:
+    """Id of the approved, active account with this email, if any."""
+    table = table_for(kind)
+    with _connect() as connection:
+        row = connection.execute(
+            f"SELECT id FROM {table} WHERE lower(email) = ? AND event_id = ? "
+            "AND approved = 1 AND active = 1 AND deleted_at IS NULL",
+            ((email or "").strip().lower(), SETTINGS.event_id)
+        ).fetchone()
+    return row["id"] if row else None
+
+
+def logged_in_kind(request: Request) -> str | None:
+    for kind, key in SESSION_KEYS.items():
+        if isinstance(request.session.get(key), int):
+            return kind
+    return None
 
 
 def verify_password(kind: str, account_id: int, password: str) -> bool:

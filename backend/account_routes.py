@@ -2,11 +2,12 @@
 
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+import account_tokens
 import accounts
 import notifications
 import rate_limit
@@ -138,3 +139,132 @@ for _kind in accounts.KINDS:
                          methods=["GET"], response_class=HTMLResponse)
     router.add_api_route(f"/{_kind}/login", _login_api(_kind), methods=["POST"])
     router.add_api_route(f"/{_kind}/logout", _logout(_kind), methods=["POST"])
+
+
+# ---------------------------------------------------------------- passwords
+
+RESET_LINK_TTL_SECONDS = 3600
+FORGOT_SCOPE = "forgot-password"
+FORGOT_MESSAGE = ("If an approved account uses that email, we have sent it a "
+                  "password reset link. The link works once and expires in 1 hour.")
+
+
+def _password_page(request: Request, mode: str, status_code: int = 200, **context):
+    return templates.TemplateResponse(
+        request=request, name="account_password.html", status_code=status_code,
+        context={"mode": mode, **context},
+    )
+
+
+@router.get("/account/change-password", response_class=HTMLResponse)
+def change_password_page(request: Request):
+    kind = accounts.logged_in_kind(request)
+    account = accounts.session_account(request, kind) if kind else None
+    if account is None:
+        return RedirectResponse(url="/attendee/login", status_code=303)
+    return _password_page(request, "change",
+                          forced=bool(account["must_change_password"]))
+
+
+@router.post("/account/change-password", response_class=HTMLResponse)
+def change_password(request: Request, current_password: str = Form(...),
+                    new_password: str = Form(...), confirm_password: str = Form(...)):
+    require_same_origin(request)
+    kind = accounts.logged_in_kind(request)
+    account = accounts.session_account(request, kind) if kind else None
+    if account is None:
+        raise HTTPException(status_code=401, detail="Please log in first.")
+
+    error = None
+    if not accounts.verify_password(kind, account["id"], current_password):
+        error = "Your current password is incorrect."
+    elif new_password != confirm_password:
+        error = "The new passwords do not match."
+    elif new_password == current_password:
+        error = "Please choose a different password."
+    else:
+        try:
+            accounts.change_password(kind, account["id"], new_password)
+        except accounts.AccountError as exc:
+            error = str(exc)
+    if error:
+        return _password_page(request, "change", status_code=400, error=error,
+                              forced=bool(account["must_change_password"]))
+
+    logger.info("%s %s changed their password", kind, account["id"])
+    return RedirectResponse(url=PAGES[kind]["home"], status_code=303)
+
+
+def _require_email_enabled() -> None:
+    if not SETTINGS.email_enabled:
+        raise HTTPException(status_code=404, detail="Not found")
+
+
+@router.get("/account/forgot-password", response_class=HTMLResponse)
+def forgot_password_page(request: Request, kind: str = "attendee"):
+    _require_email_enabled()
+    if kind not in accounts.KINDS:
+        kind = "attendee"
+    return _password_page(request, "forgot", kind=kind)
+
+
+@router.post("/account/forgot-password", response_class=HTMLResponse)
+def forgot_password(request: Request, kind: str = Form(...), email: str = Form(...)):
+    _require_email_enabled()
+    require_same_origin(request)
+    if kind not in accounts.KINDS:
+        raise HTTPException(status_code=400, detail="Unknown account type")
+
+    ip = client_ip(request)
+    wait = rate_limit.retry_after(FORGOT_SCOPE, ip, email)
+    if wait:
+        return too_many_attempts(wait)
+    rate_limit.record_failure(FORGOT_SCOPE, ip, email)
+
+    account_id = accounts.find_active_by_email(kind, email)
+    if account_id is not None:
+        token = account_tokens.issue("reset", kind, account_id, RESET_LINK_TTL_SECONDS)
+        link = f"{SETTINGS.public_base_url}/account/reset-password?token={token}"
+        try:
+            notifications.send_email(
+                email.strip().lower(), "TAM password reset",
+                "Someone asked to reset the password for your TAM account.\n\n"
+                f"Reset it here (works once, expires in 1 hour):\n{link}\n\n"
+                "If this wasn't you, ignore this email; your password is unchanged.")
+        except notifications.EmailError:
+            logger.exception("Password reset email failed for %s %s", kind, account_id)
+    # Same response either way, so the form can't reveal which emails exist.
+    return _password_page(request, "message", message=FORGOT_MESSAGE)
+
+
+@router.get("/account/reset-password", response_class=HTMLResponse)
+def reset_password_page(request: Request, token: str = ""):
+    if account_tokens.peek(token, "reset") is None:
+        return _password_page(request, "invalid", status_code=410)
+    return _password_page(request, "reset", token=token)
+
+
+@router.post("/account/reset-password", response_class=HTMLResponse)
+def reset_password(request: Request, token: str = Form(...),
+                   new_password: str = Form(...), confirm_password: str = Form(...)):
+    require_same_origin(request)
+    # Validate first so a typo doesn't burn the single-use token.
+    error = None
+    if new_password != confirm_password:
+        error = "The passwords do not match."
+    else:
+        try:
+            accounts.validate_password(new_password)
+        except accounts.AccountError as exc:
+            error = str(exc)
+    if error:
+        return _password_page(request, "reset", status_code=400, token=token, error=error)
+
+    target = account_tokens.consume(token, "reset")
+    if target is None:
+        return _password_page(request, "invalid", status_code=410)
+    kind, account_id = target
+    accounts.change_password(kind, account_id, new_password)
+    logger.info("%s %s reset their password by email link", kind, account_id)
+    return _password_page(request, "message", kind=kind,
+                          message="Your password has been changed. You can now log in.")

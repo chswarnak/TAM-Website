@@ -234,6 +234,14 @@
 
 
                         {% if contributor.active and not contributor.deleted_at %}
+                        <form action="/admin/accounts/contributor/{{ contributor.id }}/reset-password"
+                            method="post" style="margin: 0;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit"
+                                    onclick="return confirm('Issue a temporary password for this contributor?')">
+                                Reset password
+                            </button>
+                        </form>
                         <form action="/admin/contributors/{{ contributor.id }}/delete"
                             method="post"
                             style="margin: 0;">

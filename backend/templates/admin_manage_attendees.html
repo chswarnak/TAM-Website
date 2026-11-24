@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TAM | Manage Attendees</title>
+    <link rel="stylesheet" href="/static/css/tam-admin-festival.css">
+    <style>
+        body { font-family: Arial, sans-serif; background: #fff7e6; color: #35143e;
+               padding: 16px; margin: 0; }
+        .container { max-width: 1100px; margin: 0 auto; background: white;
+                     padding: 24px; border-radius: 16px; }
+        .table-wrap { overflow-x: auto; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left;
+                 vertical-align: top; }
+        form { margin: 4px 0; }
+        a { color: #702080; }
+    </style>
+</head>
+<body>
+<div class="container tam-admin-festival">
+    <a href="/admin/dashboard">← Back to Dashboard</a>
+    <h1>TAM Attendee Management</h1>
+    <p>Pending attendees are approved from the dashboard's pending list.</p>
+    <div class="table-wrap">
+    <table>
+        <thead>
+            <tr><th>ID</th><th>Name</th><th>Login (email / username)</th>
+                <th>Mobile</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+        {% for attendee in attendees %}
+            <tr>
+                <td>{{ attendee.id }}</td>
+                <td>{{ attendee.full_name }}</td>
+                <td>{{ attendee.email }}{% if attendee.username %} / {{ attendee.username }}{% endif %}
+                    <details>
+                        <summary>Change login</summary>
+                        <form method="post" action="/admin/accounts/attendee/{{ attendee.id }}/set-login">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="email" name="email" required value="{{ attendee.email }}">
+                            <input type="text" name="username" placeholder="username (optional)"
+                                   value="{{ attendee.username or '' }}">
+                            <button type="submit">Save login</button>
+                        </form>
+                    </details>
+                </td>
+                <td>{{ attendee.mobile_number or "—" }}</td>
+                <td>{{ "Approved" if attendee.approved else "Pending" }}</td>
+                <td>
+                    <form method="post" action="/admin/accounts/attendee/{{ attendee.id }}/reset-password"
+                          onsubmit="return confirm('Issue a temporary password for this attendee?')">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit">Reset password</button>
+                    </form>
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="6">No attendees registered yet.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+</body>
+</html>
