@@ -199,56 +199,54 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 
 <!-- TAM-SHARED-EXACT-BORDER-V1 -->
 <link rel="stylesheet" href="/static/css/tam-exact-border.css?v=1">
+
+<!-- TAM-GRAND-SPARKLES-V1 -->
+<link rel="stylesheet"
+      href="/static/tam-grand-sparkles.css?v=2">
+<script src="/static/tam-grand-sparkles.js?v=2"
+        defer></script>
+
+
+<!-- TAM-UNIFIED-BACK-BUTTONS-V2 -->
+<link rel="stylesheet"
+      href="/static/tam-back-buttons.css?v=2">
+
 </head>
 
 <body>
     <div class="container tam-exact-border">
-        <h1>TAM Member Dashboard</h1>        
-            <p>
-                Welcome, <strong>{{ contributor_name }}</strong>!
-            </p>
+        <!-- TAM-SIMPLE-CONTRIBUTOR-DASHBOARD-V1 -->
 
-            <p>
-                Contributor ID: <strong>{{ contributor_id }}</strong>
-            </p>
+        <a href="/events/tam-diwali-2026"
+           class="tam-back-to-event tam-back-dashboard"
+           style="
+               display:block;
+               margin-bottom:22px;
+               padding:13px 18px;
+               border-radius:12px;
+               background:#713a78;
+               color:white;
+               text-decoration:none;
+               font-weight:bold;
+               text-align:center;
+           ">
+            ← Back to TAM Event Dashboard
+        </a>
 
-            <p>Share your event memories.</p>
+        <h1>TAM Contributor Dashboard</h1>
 
-                <form action="/contributor/logout" method="post">
-                <button type="submit"
-                        style="
-                            background-color: #c0392b;
-                            color: white;
-                            border: none;
-                            border-radius: 6px;
-                            padding: 10px 24px;
-                            margin-top: 10px;
-                            cursor: pointer;
-                            font-size: 14px;
-                            ">
-                    Logout
-                </button>
-            </form> 
-
+        <p style="
+            font-size:16px;
+            line-height:1.7;
+            margin-bottom:24px;
+        ">
+            Capture and share your favorite Diwali moments.
+        </p>
 
         <a href="/contributor/camera" class="option">
-            📷 Event Camera
+            📸 Event Camera
             <span class="description">
-                Take pictures and upload automatically
-            </span>
-        </a>
-
-        <a href="/contributor/upload" class="option">
-            🖼️ Upload Photos
-            <span class="description">
-                Select multiple pictures from your device
-            </span>
-        </a>
-
-        <a href="/find-my-photos" class="option">
-            🔍 Find My Photos
-            <span class="description">
-                Find event photos using your face
+                Take pictures and upload them automatically.
             </span>
         </a>
 

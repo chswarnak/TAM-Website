@@ -367,110 +367,216 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 
 <!-- TAM-PWA-REGISTRATION-V1 -->
 <script src="/static/tam-pwa-register.js" defer></script>
+
+
+
+
+<style>
+/* TAM-PASTEL-TABS-V1 */
+
+/* 1. EVENT AGENDA — LIGHT LAVENDER */
+.portal .option.tam-tab-agenda {
+    background: linear-gradient(
+        135deg,
+        #F3E8FF,
+        #E9D5FF
+    ) !important;
+
+    border: 2px solid #C4A1ED !important;
+    color: #583478 !important;
+    box-shadow: 0 6px 16px rgba(126, 87, 165, .13) !important;
+}
+
+.portal .tam-tab-agenda strong,
+.portal .tam-tab-agenda span {
+    color: #583478 !important;
+}
+
+/* 2. CONTRIBUTE PHOTOS — LIGHT MINT GREEN */
+.portal .option.tam-tab-contribute {
+    background: linear-gradient(
+        135deg,
+        #E5FFF1,
+        #C9F5DD
+    ) !important;
+
+    border: 2px solid #7CCFA0 !important;
+    color: #195C3E !important;
+    box-shadow: 0 6px 16px rgba(35, 130, 85, .13) !important;
+}
+
+.portal .tam-tab-contribute strong,
+.portal .tam-tab-contribute span {
+    color: #195C3E !important;
+}
+
+/* 3. FIND MY PHOTOS — LIGHT SKY BLUE */
+.portal .option.tam-tab-find {
+    background: linear-gradient(
+        135deg,
+        #E4F3FF,
+        #CEDFFF
+    ) !important;
+
+    border: 2px solid #8CA8F0 !important;
+    color: #234A86 !important;
+    box-shadow: 0 6px 16px rgba(65, 105, 185, .13) !important;
+}
+
+.portal .tam-tab-find strong,
+.portal .tam-tab-find span {
+    color: #234A86 !important;
+}
+
+/* 4. VIEW EVENT PHOTOS — LIGHT ROSE PINK */
+.portal .option.tam-tab-gallery {
+    background: linear-gradient(
+        135deg,
+        #FFF0F4,
+        #FFD9E6
+    ) !important;
+
+    border: 2px solid #EDA2BE !important;
+    color: #873B60 !important;
+    box-shadow: 0 6px 16px rgba(175, 75, 115, .13) !important;
+}
+
+.portal .tam-tab-gallery strong,
+.portal .tam-tab-gallery span {
+    color: #873B60 !important;
+}
+
+/* Consistent rounded corners and hover effects */
+.portal .tam-tab-agenda,
+.portal .tam-tab-contribute,
+.portal .tam-tab-find,
+.portal .tam-tab-gallery {
+    border-radius: 18px !important;
+}
+
+.portal a.tam-tab-contribute:hover,
+.portal a.tam-tab-find:hover,
+.portal a.tam-tab-gallery:hover {
+    filter: brightness(1.025);
+    transform: translateY(-3px);
+}
+
+/* Agenda remains unavailable until implemented */
+.portal .tam-tab-agenda {
+    cursor: not-allowed !important;
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+    .portal a.tam-tab-contribute:hover,
+    .portal a.tam-tab-find:hover,
+    .portal a.tam-tab-gallery:hover {
+        transform: none;
+    }
+}
+</style>
+
+
+<!-- TAM-GRAND-SPARKLES-V1 -->
+<link rel="stylesheet"
+      href="/static/tam-grand-sparkles.css?v=2">
+<script src="/static/tam-grand-sparkles.js?v=2"
+        defer></script>
+
 </head>
 <body>
     <main class="portal tam-exact-border">
-        <h1>Welcome to TAM Diwali 2026</h1>
+        <h1>🪔 TAM Event Dashboard</h1>
         <p class="subtitle">
-            Your event memories in one place
+            Welcome to TAM Diwali 2026 — Celebrate, Capture &amp; Cherish Every Moment!
         </p>
 
+        {% if contributor_id %}
+        <!-- TAM-LANDING-CONTRIBUTOR-INFO-V1 -->
+        <section class="tam-contributor-welcome"
+                 aria-label="Contributor account"
+                 style="
+                    margin:20px auto;
+                    padding:18px;
+                    border:1px solid #e4ae55;
+                    border-radius:15px;
+                    background:#fff4e4;
+                    text-align:center;
+                 ">
+
+            <h2 style="color:#72345e;margin:0 0 12px;">
+                Welcome, {{ contributor_name }}!
+            </h2>
+
+            <p>
+                Contributor ID:
+                <strong>{{ contributor_id }}</strong>
+            </p>
+
+            <p>Share your event memories.</p>
+
+            <form action="/contributor/logout" method="post">
+                <button type="submit"
+                        style="
+                            background:#c0392b;
+                            color:white;
+                            border:0;
+                            border-radius:8px;
+                            padding:11px 26px;
+                            font-size:15px;
+                            cursor:pointer;
+                        ">
+                    Logout
+                </button>
+            </form>
+        </section>
+        {% endif %}
+
+        <!-- TAM-EVENT-DASHBOARD-TABS-V1 -->
+
+        <div class="option disabled tam-tab-agenda"
+             aria-disabled="true">
+            <strong>📅 Event Agenda</strong>
+            <span>Coming Soon</span>
+        </div>
+
         {% if not agenda_only %}
-        <a class="option" href="/contributor/login">
+
+        <a class="option tam-tab-contribute"
+           href="{{ '/contributor/dashboard' if contributor_id
+                   else '/contributor/login' }}">
             <strong>📸 Contribute Photos</strong>
             <span>
-                Sign in using the contributor credentials provided by the TAM administrator.
+                {% if contributor_id %}
+                    Open your contributor dashboard and event camera.
+                {% else %}
+                    Sign in to contribute event photographs.
+                {% endif %}
             </span>
         </a>
 
-        <a class="option" href="/find-my-photos">
+        <a class="option tam-tab-find"
+           href="/find-my-photos">
             <strong>🔎 Find My Photos</strong>
             <span>
-                Find your event photos without contributor registration.
+                Find your event photos using facial recognition.
             </span>
         </a>
 
-        <a class="option" href="/gallery">
+        <a class="option tam-tab-gallery"
+           href="/gallery">
             <strong>🖼️ View Event Photos</strong>
-            <span>Browse approved photos from the event.</span>
+            <span>
+                Browse approved photos from the event.
+            </span>
         </a>
 
         {% endif %}
-        <div class="option disabled" aria-disabled="true">
-            <strong>📅 Event Agenda</strong>
-            <span>Coming soon</span>
-        </div>
 
         <p class="footer">
             TAM Smart Event Photo Sharing System
         </p>
     </main>
-<script>
 
-// TAM-SPARKLE-EFFECT-V1 — visual-only click enhancement.
-(()=>{
-  const choices = [
-    {selector:'a[href="/contributor/login"]', kind:'contribute'},
-    {selector:'a[href="/find-my-photos"]', kind:'find'}
-  ];
-  choices.forEach(({selector,kind})=>{
-    const element=document.querySelector(selector);
-    if(element) element.setAttribute('data-tam-sparkle',kind);
-  });
-  const agenda=[...document.querySelectorAll('.option, a, button, div')].find(element=>
-    element.textContent?.includes('Event Agenda') &&
-    element.textContent?.includes('Coming soon') &&
-    element.textContent.length<180 && element.children.length<5
-  );
-  if(agenda && !agenda.hasAttribute('data-tam-sparkle')) {
-    agenda.setAttribute('data-tam-sparkle','agenda');
-    agenda.setAttribute('aria-disabled','true');
-  }
-  function burst(element){
-    if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    for(let index=0; index<16;index++){
-      const particle=document.createElement('span');
-      const angle=2*Math.PI*index/16, distance=35+Math.random()*72;
-      particle.className='tam-firework-particle';
-      particle.style.setProperty('--dx',Math.cos(angle)*distance+'px');
-      particle.style.setProperty('--dy',Math.sin(angle)*distance+'px');
-      particle.style.setProperty('--spark-color',index%2?'#ffd65e':'#ff719b');
-      particle.addEventListener('animationend',()=>particle.remove(),{once:true});
-      element.appendChild(particle);
-      setTimeout(()=>particle.remove(),650);
-    }
-  }
-  let audioContext;
-  function firecrackerSound(){
-    try {
-      const Context=window.AudioContext||window.webkitAudioContext;
-      if(!Context) return;
-      audioContext ??= new Context();
-      if(audioContext.state==='suspended') audioContext.resume();
-      const rate=audioContext.sampleRate;
-      const buffer=audioContext.createBuffer(1,Math.ceil(rate*.16),rate);
-      const samples=buffer.getChannelData(0);
-      for(let i=0;i<samples.length;i++) samples[i]=(Math.random()*2-1)*Math.exp(-i/rate*33);
-      const source=audioContext.createBufferSource(); source.buffer=buffer;
-      const filter=audioContext.createBiquadFilter();filter.type='highpass';filter.frequency.value=800;
-      const gain=audioContext.createGain();gain.gain.value=.12;
-      source.connect(filter);filter.connect(gain);gain.connect(audioContext.destination);
-      source.start(); source.stop(audioContext.currentTime+.17);
-    }catch(error){ /* Browser sound restrictions must not interfere with links. */ }
-  }
-  document.querySelectorAll('a[data-tam-sparkle]').forEach(element=>{
-    element.addEventListener('click',event=>{
-      if(event.defaultPrevented || event.button!==0 || event.ctrlKey ||
-         event.metaKey || event.altKey || event.shiftKey) return;
-      burst(element);firecrackerSound();
-      if(element.target && element.target!=='_self') return;
-      event.preventDefault();
-      const destination=element.href;
-      setTimeout(()=>window.location.assign(destination),300);
-    });
-  });
-})();
-
-</script>
 </body>
 </html>

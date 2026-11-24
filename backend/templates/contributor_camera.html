@@ -196,10 +196,187 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 }
 </style>
 
+
+<style>
+/* TAM-FESTIVE-CAMERA-V1 */
+
+#openCamera {
+    position: relative;
+    overflow: visible;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 66px;
+    padding: 16px 30px;
+    border-radius: 18px;
+    border: 2px solid #ffdf8c;
+    background: linear-gradient(
+        135deg,
+        #6d235e 0%,
+        #a33f70 45%,
+        #df802c 100%
+    );
+    color: white;
+    font-size: 19px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow:
+        0 8px 25px rgba(97,28,76,.35),
+        0 0 20px rgba(255,194,72,.45);
+    transition: transform .2s, box-shadow .2s;
+}
+
+#openCamera:not(:disabled):hover {
+    transform: translateY(-3px) scale(1.04);
+    box-shadow:
+        0 12px 30px rgba(97,28,76,.4),
+        0 0 35px rgba(255,194,72,.75);
+}
+
+#openCamera:not(:disabled):active {
+    transform: scale(.97);
+}
+
+#openCamera:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+}
+
+.tam-camera-description {
+    max-width: 420px;
+    margin: 12px auto 22px;
+    line-height: 1.7;
+    color: #673357;
+    font-size: 15px;
+}
+
+.tam-camera-tag {
+    display: inline-block;
+    padding: 8px 17px;
+    border-radius: 25px;
+    background: #fff0d2;
+    color: #81395b;
+    font-weight: bold;
+    margin-bottom: 12px;
+}
+
+#uploadStatus {
+    display: inline-block;
+    max-width: 95%;
+    background: #edf8ec;
+    border: 1px solid #b2dfae;
+    color: #176536;
+    padding: 12px 18px;
+    border-radius: 14px;
+    line-height: 1.5;
+    font-weight: bold;
+}
+
+#message {
+    line-height: 1.6;
+    font-weight: bold;
+    color: #73356a;
+}
+
+#webcamPanel {
+    margin: 20px auto;
+    max-width: 440px;
+    padding: 14px;
+    border: 2px solid #e6aa43;
+    border-radius: 18px;
+    background: #fff8ed;
+}
+
+#webcamPanel[hidden] {
+    display: none !important;
+}
+
+#webcamPreview {
+    width: 100%;
+    max-height: 330px;
+    object-fit: contain;
+    border-radius: 12px;
+    background: #17101b;
+}
+
+#snapWebcam {
+    background: linear-gradient(135deg,#b74336,#e39036);
+}
+
+#closeWebcam {
+    background: #685a73;
+}
+
+.tam-sparkle {
+    position: fixed;
+    z-index: 9999;
+    pointer-events: none;
+    font-size: 36px;
+    line-height: 1;
+    animation: tam-sparkle-burst 1050ms ease-out forwards;
+    filter: drop-shadow(0 0 12px #ffcc38);
+}
+
+@keyframes tam-sparkle-burst {
+    0% {
+        opacity: 1;
+        transform: translate(-50%,-50%) scale(.4);
+    }
+    55% {
+        opacity: 1;
+        transform:
+            translate(calc(-50% + var(--dx) * .65),
+                      calc(-50% + var(--dy) * .65))
+            scale(1.6) rotate(130deg);
+    }
+    100% {
+        opacity: 0;
+        transform:
+            translate(calc(-50% + var(--dx)),
+                      calc(-50% + var(--dy)))
+            scale(.7) rotate(260deg);
+    }
+}
+
+@media (max-width: 600px) {
+    #openCamera {
+        width: 90%;
+        max-width: 340px;
+        font-size: 18px;
+    }
+    .tam-sparkle {
+        font-size: 29px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tam-sparkle {
+        animation: none;
+        display: none;
+    }
+    #openCamera {
+        transition: none;
+    }
+}
+</style>
+
+
+<!-- TAM-GRAND-SPARKLES-V1 -->
+<link rel="stylesheet"
+      href="/static/tam-grand-sparkles.css?v=2">
+<script src="/static/tam-grand-sparkles.js?v=2"
+        defer></script>
+
+
+<!-- TAM-UNIFIED-BACK-BUTTONS-V2 -->
+<link rel="stylesheet"
+      href="/static/tam-back-buttons.css?v=2">
+
 </head>
 <body>
     <div class="container">
-        <a href="/contributor/dashboard"
+        <a class="tam-back-dashboard" href="/events/tam-diwali-2026"
         style="display: block;
                 background: #273d6b;
                 color: white;
@@ -208,22 +385,49 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
                 text-decoration: none;
                 text-align: center;
                 margin-bottom: 20px;">
-            ← Back to Dashboard
+            ← Back to TAM Event Dashboard
         </a>
 
-        <h1>TAM Event Camera</h1>
-        <p>Take photos and share your event memories</p>
+        <div class="tam-camera-tag">✨ TAM DIWALI 2026 ✨</div>
+        <h1>📸 Capture the Celebration!</h1>
+        <p class="tam-camera-description">
+            Every smile deserves to be remembered!
+            Tap the camera button, capture your favorite
+            Diwali moments, and share them with the TAM community.
+            <br><strong>Your photo uploads automatically after capture.</strong>
+        </p>
 
 
 <div style="margin:20px 0;">
     <input id="nativeEventPhoto" type="file" accept="image/*"
            capture="environment" hidden>
-    <button id="openCamera" type="button" disabled>📷 Take Photo</button>
+    <button id="openCamera" type="button" disabled>📸 Capture a Memory ✨</button>
     <button id="retryPhoto" type="button" hidden>Retry Upload</button>
 </div>
 
-<p id="uploadStatus" role="status">Checking upload availability…</p>
-<p id="message" role="status"></p>
+<p id="uploadStatus" role="status">
+            Checking if your camera is ready…
+        </p>
+
+<div id="webcamPanel" hidden>
+    <h3>📷 Your Camera Is Ready!</h3>
+    <p>Smile and capture your Diwali moment.</p>
+
+    <video id="webcamPreview"
+           autoplay muted playsinline></video>
+
+    <div>
+        <button id="snapWebcam" type="button">
+            📸 Capture Photo
+        </button>
+
+        <button id="closeWebcam" type="button">
+            Cancel
+        </button>
+    </div>
+</div>
+
+<p id="message" role="status" aria-live="polite"></p>
 </div>
 
 <script>
@@ -257,7 +461,9 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 
             const result = await response.json();
             uploadsOpen = result.uploads_open === true;
-            status.textContent = uploadsOpen ? "Uploads Open" : "Uploads Closed";
+            status.textContent = uploadsOpen
+                ? "🟢 Camera Ready — Take a photo to share your memories!"
+                : "🔒 Photo uploads are currently unavailable.";
         } catch {
             uploadsOpen = false;
             status.textContent = "Unable to verify upload availability.";
@@ -270,7 +476,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 
         uploading = true;
         updateButtons();
-        message.textContent = "Uploading photo…";
+        message.textContent = "📤 Saving your Diwali memory to the TAM gallery…";
 
         const formData = new FormData();
         formData.append("file", pendingPhoto, pendingPhoto.name || "event-photo.jpg");
@@ -295,7 +501,8 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             }
 
             pendingPhoto = null;
-            message.textContent = "Photo uploaded. You can take another.";
+            message.textContent = "🎉 Your Diwali memory has been shared successfully!";
+            sparkleBurst(takeButton, true);
         } catch {
             message.textContent = "Connection interrupted. Check your uploads before retrying.";
         } finally {
@@ -305,7 +512,217 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
         }
     }
 
-    takeButton.addEventListener("click", () => input.click());
+
+    // TAM festive effects and camera enhancements.
+
+    const webcamPanel = document.getElementById("webcamPanel");
+    const webcamVideo = document.getElementById("webcamPreview");
+    const snapWebcam = document.getElementById("snapWebcam");
+    const closeWebcam = document.getElementById("closeWebcam");
+
+    let webcamStream = null;
+
+    function sparkleBurst(element, celebrate = false) {
+        if (window.matchMedia(
+            "(prefers-reduced-motion: reduce)"
+        ).matches) return;
+
+        const rect = element.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+
+        const count = celebrate ? 24 : 18;
+
+        for (let i = 0; i < count; i++) {
+            const sparkle = document.createElement("span");
+            sparkle.className = "tam-sparkle";
+            sparkle.textContent = ["✨","⭐","✦","🌟"][i % 4];
+
+            const angle = (Math.PI * 2 * i) / count;
+            const distance = 100 + (i % 4) * 24;
+
+            sparkle.style.left = x + "px";
+            sparkle.style.top = y + "px";
+
+            sparkle.style.setProperty(
+                "--dx", Math.cos(angle) * distance + "px"
+            );
+            sparkle.style.setProperty(
+                "--dy", Math.sin(angle) * distance + "px"
+            );
+
+            document.body.appendChild(sparkle);
+            setTimeout(() => sparkle.remove(), 1200);
+        }
+    }
+
+    function playCameraSound() {
+        try {
+            const AudioContextClass =
+                window.AudioContext || window.webkitAudioContext;
+
+            if (!AudioContextClass) return;
+
+            const audio = new AudioContextClass();
+            const start = audio.currentTime;
+
+            const notes = [
+                {frequency: 880, time: 0, duration: .07},
+                {frequency: 1175, time: .08, duration: .09},
+                {frequency: 1568, time: .18, duration: .12}
+            ];
+
+            for (const note of notes) {
+                const oscillator = audio.createOscillator();
+                const gain = audio.createGain();
+
+                oscillator.type = "sine";
+                oscillator.frequency.value = note.frequency;
+
+                gain.gain.setValueAtTime(
+                    .0001, start + note.time
+                );
+                gain.gain.exponentialRampToValueAtTime(
+                    .045, start + note.time + .015
+                );
+                gain.gain.exponentialRampToValueAtTime(
+                    .0001,
+                    start + note.time + note.duration
+                );
+
+                oscillator.connect(gain);
+                gain.connect(audio.destination);
+
+                oscillator.start(start + note.time);
+                oscillator.stop(
+                    start + note.time + note.duration
+                );
+            }
+
+            setTimeout(() => audio.close().catch(() => {}), 1000);
+        } catch {
+            // Sound is optional. Camera functionality must still work.
+        }
+    }
+
+    function isMobileDevice() {
+        return navigator.userAgentData?.mobile === true ||
+            /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    }
+
+    function stopWebcam() {
+        if (webcamStream) {
+            webcamStream.getTracks().forEach(track => track.stop());
+            webcamStream = null;
+        }
+
+        webcamVideo.pause();
+        webcamVideo.srcObject = null;
+        webcamPanel.hidden = true;
+    }
+
+    async function openDesktopWebcam() {
+        if (!navigator.mediaDevices?.getUserMedia) {
+            message.textContent =
+                "Camera access is unavailable in this browser. " +
+                "Please use a compatible camera-enabled device.";
+            return;
+        }
+
+        try {
+            webcamStream = await navigator.mediaDevices.getUserMedia({
+                video: {facingMode: {ideal: "environment"}},
+                audio: false
+            });
+
+            webcamVideo.srcObject = webcamStream;
+            webcamPanel.hidden = false;
+
+            await webcamVideo.play();
+
+            message.textContent =
+                "📸 Position your camera and capture your memory!";
+        } catch {
+            stopWebcam();
+            message.textContent =
+                "Camera could not be opened. Check Chrome camera " +
+                "permissions and ensure a webcam is connected.";
+        }
+    }
+
+    takeButton.addEventListener("click", () => {
+        if (takeButton.disabled) return;
+
+        sparkleBurst(takeButton);
+        playCameraSound();
+
+        if (isMobileDevice()) {
+            // Native smartphone camera.
+            input.click();
+        } else {
+            // Desktop Chrome browser webcam.
+            openDesktopWebcam();
+        }
+    });
+
+    closeWebcam.addEventListener("click", stopWebcam);
+
+    snapWebcam.addEventListener("click", () => {
+        if (!webcamStream || uploading || pendingPhoto) return;
+
+        if (!webcamVideo.videoWidth || !webcamVideo.videoHeight) {
+            message.textContent = "Camera is still starting. Try again.";
+            return;
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = webcamVideo.videoWidth;
+        canvas.height = webcamVideo.videoHeight;
+
+        const context = canvas.getContext("2d");
+        if (!context) {
+            message.textContent = "Unable to capture the photo.";
+            return;
+        }
+
+        context.drawImage(
+            webcamVideo, 0, 0, canvas.width, canvas.height
+        );
+
+        snapWebcam.disabled = true;
+
+        canvas.toBlob(blob => {
+            snapWebcam.disabled = false;
+
+            if (!blob) {
+                message.textContent = "Unable to capture the photo.";
+                return;
+            }
+
+            pendingPhoto = new File(
+                [blob],
+                "tam-diwali-" + Date.now() + ".jpg",
+                {type: "image/jpeg"}
+            );
+
+            stopWebcam();
+            updateButtons();
+
+            if (uploadsOpen) {
+                uploadPhoto();
+            } else {
+                message.textContent =
+                    "Uploads are unavailable. Retry when they reopen.";
+            }
+        }, "image/jpeg", .9);
+    });
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden && webcamStream) stopWebcam();
+    });
+
+    window.addEventListener("pagehide", stopWebcam);
+
     retryButton.addEventListener("click", uploadPhoto);
 
     input.addEventListener("change", () => {

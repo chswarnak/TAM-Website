@@ -1,0 +1,172 @@
+
+/* TAM-GRAND-SPARKLES-V1 */
+
+.tam-grand-particle {
+    position: fixed;
+    z-index: 99999;
+    pointer-events: none;
+    user-select: none;
+    font-size: 44px;
+    line-height: 1;
+    opacity: 0;
+
+    filter:
+        drop-shadow(0 0 8px #ffd54f)
+        drop-shadow(0 0 15px #f6a6df);
+
+    animation:
+        tam-grand-burst 1300ms ease-out forwards;
+}
+
+@keyframes tam-grand-burst {
+    0% {
+        opacity: 0;
+        transform:
+            translate(-50%, -50%)
+            scale(.3)
+            rotate(0deg);
+    }
+
+    15% {
+        opacity: 1;
+    }
+
+    55% {
+        opacity: 1;
+        transform:
+            translate(
+                calc(-50% + var(--dx) * .65),
+                calc(-50% + var(--dy) * .65)
+            )
+            scale(1.65)
+            rotate(120deg);
+    }
+
+    100% {
+        opacity: 0;
+        transform:
+            translate(
+                calc(-50% + var(--dx)),
+                calc(-50% + var(--dy))
+            )
+            scale(.6)
+            rotate(260deg);
+    }
+}
+
+/* Glow only; preserve existing button colors. */
+.tam-grand-target:not(:disabled):not([aria-disabled="true"]):hover {
+    box-shadow:
+        0 0 16px rgba(255, 206, 91, .45),
+        0 0 26px rgba(231, 139, 220, .22) !important;
+}
+
+/* Decorative shimmer for unavailable Agenda. */
+.tam-tab-agenda[aria-disabled="true"] {
+    position: relative;
+}
+
+@media (max-width: 600px) {
+    .tam-grand-particle {
+        font-size: 36px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tam-grand-particle {
+        display: none !important;
+        animation: none !important;
+    }
+}
+
+
+/* TAM-GRAND-SPARKLES-V2 */
+
+/* Decorative stars on all four dashboard tabs. */
+.tam-tab-agenda,
+.tam-tab-contribute,
+.tam-tab-find,
+.tam-tab-gallery {
+    position: relative;
+    isolation: isolate;
+}
+
+/* Large animated stars at the upper-right corner. */
+.tam-tab-agenda::after,
+.tam-tab-contribute::after,
+.tam-tab-find::after,
+.tam-tab-gallery::after {
+    content: "✦ ✧ ✨ ✦";
+    position: absolute;
+    top: 8px;
+    right: 13px;
+
+    font-size: 25px;
+    letter-spacing: 4px;
+    line-height: 1.3;
+
+    pointer-events: none;
+    z-index: 2;
+
+    animation:
+        tam-festive-twinkle 1.6s
+        ease-in-out infinite alternate;
+}
+
+/* Individual sparkle colors. */
+.tam-tab-agenda::after {
+    color: #9754d4;
+}
+
+.tam-tab-contribute::after {
+    color: #28a86b;
+}
+
+.tam-tab-find::after {
+    color: #6876df;
+}
+
+.tam-tab-gallery::after {
+    color: #dc609a;
+}
+
+/* Gentle sparkle movement. */
+@keyframes tam-festive-twinkle {
+    0% {
+        opacity: .35;
+        transform: scale(.82) rotate(-5deg);
+        filter: brightness(.9);
+    }
+
+    50% {
+        opacity: .8;
+        filter: brightness(1.2);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1.16) rotate(5deg);
+        filter:
+            brightness(1.4)
+            drop-shadow(0 0 7px #ffd76d);
+    }
+}
+
+/* On hover, make the decorative stars brighter. */
+.tam-tab-contribute:hover::after,
+.tam-tab-find:hover::after,
+.tam-tab-gallery:hover::after {
+    filter:
+        brightness(1.5)
+        drop-shadow(0 0 10px #ffd76d);
+}
+
+/* Preserve accessibility settings. */
+@media (prefers-reduced-motion: reduce) {
+    .tam-tab-agenda::after,
+    .tam-tab-contribute::after,
+    .tam-tab-find::after,
+    .tam-tab-gallery::after {
+        animation: none !important;
+    }
+}

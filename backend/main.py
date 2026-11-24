@@ -3449,13 +3449,54 @@ async def tam_event_portal(request: Request):
     agenda_only = request.query_params.get("agenda") == "1"
     headers = {"Cache-Control": "no-store"}
 
-    if not agenda_only and active_event_selfie_consent(request) is None:
-        return RedirectResponse(EVENT_CONSENT_URL, status_code=303, headers=headers)
+    # TAM-CONTRIBUTOR-LANDING-ACCESS-V1
+    # Determine contributor eligibility from the database, not
+    # merely from the contributor_id stored in the session.
+    # Photo-search and gallery consent remain independently enforced.
+
+    # TAM-LANDING-CONTRIBUTOR-INFO-V1
+    # Show contributor details only for approved, active accounts.
+    contributor_id = request.session.get("contributor_id")
+    contributor = None
+
+    if isinstance(contributor_id, int) and not isinstance(
+        contributor_id, bool
+    ):
+        with sqlite3.connect(DB_PATH, timeout=10) as connection:
+            contributor = connection.execute(
+                """
+                SELECT id, name
+                FROM contributors
+                WHERE id = ?
+                  AND event_id = ?
+                  AND approved = 1
+                  AND active = 1
+                  AND deleted_at IS NULL
+                """,
+                (contributor_id, EVENT_ID),
+            ).fetchone()
+
+    # Guests must complete event consent before entering.
+    # Authenticated, approved contributors may access the portal.
+    if (
+        not agenda_only
+        and contributor is None
+        and active_event_selfie_consent(request) is None
+    ):
+        return RedirectResponse(
+            EVENT_CONSENT_URL,
+            status_code=303,
+            headers=headers,
+        )
 
     return templates.TemplateResponse(
         request=request,
         name="event_portal.html",
-        context={"agenda_only": agenda_only},
+        context={
+            "agenda_only": agenda_only,
+            "contributor_id": contributor[0] if contributor else None,
+            "contributor_name": contributor[1] if contributor else None,
+        },
         headers=headers,
     )
 
