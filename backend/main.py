@@ -48,9 +48,11 @@ app.mount(
 # Gallery access remains controlled by database permissions.
 from gallery_pages import router as gallery_pages_router
 from gallery_routes import router as gallery_api_router
+from gallery_admin import router as gallery_admin_router
 
 app.include_router(gallery_pages_router)
 app.include_router(gallery_api_router)
+app.include_router(gallery_admin_router)
 
 
 
