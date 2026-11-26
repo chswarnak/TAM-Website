@@ -55,7 +55,7 @@
             margin-top: 20px;
             text-align: center;
         }
-    
+
 </style>
 
 <!-- TAM-THEME-BEGIN -->
@@ -231,8 +231,40 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
         text-align: center;
     }
 </style>
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<link rel="stylesheet" href="/static/css/tam-site-logo.css">
+
+
+<!-- TAM-LOGO-BACK-CLEARANCE-V1 -->
+<script src="/static/tam-logo-back-clearance.js?v=1" defer></script>
 </head>
 <body>
+
+
+
+<!-- TAM-BIG-BACKGROUND-WATERMARK-V1 -->
+<div class="tam-background-watermark tam-watermark-left"
+     aria-hidden="true"></div>
+<div class="tam-background-watermark tam-watermark-right"
+     aria-hidden="true"></div>
+
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<a
+    class="tam-site-logo"
+    href="/events/tam-diwali-2026"
+    aria-label="TAM Event Home"
+    title="Return to TAM Event Home"
+>
+    <img
+        src="/static/icons/tam-icon-512.png"
+        alt="Telugu Association of Montreal"
+        width="70"
+        height="70"
+    >
+</a>
+
     <div class="container">
         <a href="/contributor/dashboard"
         style="display: block;
@@ -275,7 +307,20 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
     })();
 </script>
 
-            <button type="submit">Upload Photos</button>
+
+<div style="margin:15px 0; text-align:left;">
+    <label style="display:flex; gap:10px; align-items:flex-start;">
+        <input type="checkbox" id="demoFaceIndex"
+               style="width:auto; margin-top:4px;">
+        <span>
+            Include in facial-recognition demo.
+            I confirm everyone pictured has agreed
+            to participate.
+        </span>
+    </label>
+</div>
+
+<button type="submit">Upload Photos</button>
         </form>
 
         <p id="message" role="status"></p>
@@ -304,48 +349,92 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             button.disabled = true;
 
             try {
-                for (let i = 0; i < files.length; i++) {
-                    const file = files[i];
+                // Limit simultaneous uploads to protect EC2 memory.
+                const maxFileSize = Math.max(
+                    ...files.map(file => file.size)
+                );
 
-                    message.textContent =
-                        `Uploading photo ${i + 1} of ${files.length}...`;
+                const concurrency =
+                    maxFileSize > 15 * 1024 * 1024 ? 1 : 3;
 
-                    if (file.size > maxSize) {
-                        failed++;
-                        uploadErrors.push(`${file.name}: Photo exceeds 100 MB.`);
-                        continue;
-                    }
+                let nextIndex = 0;
+                let stopUploads = false;
 
-                    const formData = new FormData();
-                    formData.append("file", file);
+                async function uploadWorker() {
+                    while (nextIndex < files.length && !stopUploads) {
+                        const index = nextIndex++;
+                        const file = files[index];
 
-                    try {
-                        const response = await fetch("/upload", {
-                            method: "POST",
-                            credentials: "same-origin",
-                            body: formData
-                        });
+                        message.textContent =
+                            `Processing ${index + 1} of ${files.length} photos...`;
 
-                        if (response.ok) {
-                            uploaded++;
-                        } else {
+                        if (file.size > maxSize) {
                             failed++;
-                            const result = await response.json().catch(() => null);
-                            const reason = typeof result?.detail === "string"
-                                ? result.detail
-                                : `Upload failed (HTTP ${response.status}).`;
-                            uploadErrors.push(`${file.name}: ${reason}`);
-
-                            if (response.status === 401 ||
-                                response.status === 403) {
-                                break;
-                            }
+                            uploadErrors.push(
+                                `${file.name}: Photo exceeds 100 MB.`
+                            );
+                            continue;
                         }
-                    } catch (error) {
-                        failed++;
-                        uploadErrors.push(`${file.name}: Could not reach the upload server.`);
+
+                        const formData = new FormData();
+                        formData.append("file", file);
+
+                        formData.append(
+                            "demo_face_index",
+                            document.getElementById("demoFaceIndex").checked
+                                ? "yes" : "no"
+                        );
+
+                        try {
+                            const response = await fetch("/upload", {
+                                method: "POST",
+                                credentials: "same-origin",
+                                body: formData
+                            });
+
+                            if (response.ok) {
+                                uploaded++;
+                            } else {
+                                failed++;
+
+                                const result = await response.json()
+                                    .catch(() => null);
+
+                                const reason =
+                                    typeof result?.detail === "string"
+                                        ? result.detail
+                                        : `Upload failed (HTTP ${response.status}).`;
+
+                                uploadErrors.push(
+                                    `${file.name}: ${reason}`
+                                );
+
+                                if (
+                                    response.status === 401 ||
+                                    response.status === 403
+                                ) {
+                                    stopUploads = true;
+                                }
+                            }
+                        } catch (error) {
+                            failed++;
+                            uploadErrors.push(
+                                `${file.name}: Could not reach the upload server.`
+                            );
+                        }
+
+                        message.textContent =
+                            `${uploaded} uploaded, ${failed} failed, ` +
+                            `${files.length - uploaded - failed} remaining.`;
                     }
                 }
+
+                await Promise.all(
+                    Array.from(
+                        {length: Math.min(concurrency, files.length)},
+                        () => uploadWorker()
+                    )
+                );
 
                 const summary =
                     `${uploaded} photo(s) uploaded, ${failed} failed.`;
@@ -361,6 +450,6 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
                 button.disabled = false;
             }
         });
-    </script>    
+    </script>
 </body>
 </html>

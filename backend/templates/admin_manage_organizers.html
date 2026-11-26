@@ -86,8 +86,44 @@
 <link rel="stylesheet" href="/static/css/tam-exact-border.css?v=1">
 <!-- TAM-ADMIN-MANAGEMENT-FESTIVAL-V1 -->
 <link rel="stylesheet" href="/static/css/tam-admin-festival.css?v=1">
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<link rel="stylesheet" href="/static/css/tam-site-logo.css">
+
+
+<!-- TAM-GLOBAL-APPROVAL-V1 -->
+<link rel="stylesheet" href="/static/css/tam-global-approval.css">
+<script src="/static/tam-global-approval.js" defer></script>
+
+<!-- TAM-LOGO-BACK-CLEARANCE-V1 -->
+<script src="/static/tam-logo-back-clearance.js?v=1" defer></script>
 </head>
 <body>
+
+
+
+<!-- TAM-BIG-BACKGROUND-WATERMARK-V1 -->
+<div class="tam-background-watermark tam-watermark-left"
+     aria-hidden="true"></div>
+<div class="tam-background-watermark tam-watermark-right"
+     aria-hidden="true"></div>
+
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<a
+    class="tam-site-logo"
+    href="/events/tam-diwali-2026"
+    aria-label="TAM Event Home"
+    title="Return to TAM Event Home"
+>
+    <img
+        src="/static/icons/tam-icon-512.png"
+        alt="Telugu Association of Montreal"
+        width="70"
+        height="70"
+    >
+</a>
+
     <div class="container tam-exact-border tam-admin-festival">
         <h1>TAM Organizer Management</h1>
 
@@ -110,8 +146,14 @@
 
             <label for="password">Temporary Password</label>
             <input type="password" id="password"
-                   name="password" minlength="12"
+                   name="password" minlength="8" maxlength="128"
+                   pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,128}"
+                   title="Use 8-128 characters with uppercase, lowercase, number and special character."
                    autocomplete="new-password" required>
+            <small>
+                Minimum 8 characters, including an uppercase letter,
+                lowercase letter, number and special character.
+            </small>
 
             <button type="submit">Create Organizer</button>
         </form>
@@ -147,6 +189,39 @@
                     
                     <td>
                         {% if organizer.role == "admin" %}
+
+                        <!-- TAM-SUPER-ADMIN-RESET-BUTTON-V1 -->
+                        {% if organizer.active %}
+                        <form
+                            action="/admin/organizers/{{ organizer.id }}/reset-password"
+                            method="post"
+                            style="display:inline-block; margin:4px;"
+                        >
+                            <input
+                                type="hidden"
+                                name="csrf_token"
+                                value="{{ csrf_token }}"
+                            >
+
+                            <button
+                                type="submit"
+                                style="
+                                    background-color:#205c9e;
+                                    color:white;
+                                    padding:8px 12px;
+                                    border:0;
+                                    border-radius:6px;
+                                    cursor:pointer;
+                                "
+                                onclick="return confirm(
+                                    'Reset password for {{ organizer.username | e }}? The existing password will stop working immediately.'
+                                );"
+                            >
+                                Reset Password
+                            </button>
+                        </form>
+                        {% endif %}
+
 
                             {% if organizer.active %}
                             <form action="/admin/organizers/{{ organizer.id }}/disable"

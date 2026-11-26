@@ -166,7 +166,7 @@
 
             setTimeout(() => {
                 window.location.assign(destination);
-            }, reducedMotion.matches ? 0 : 250);
+            }, reducedMotion.matches ? 0 : 50);
         });
     });
 })();

@@ -1,0 +1,117 @@
+
+/* TAM-GLOBAL-CLICKABLE-LOGO-V1 */
+
+.tam-site-logo {
+    position: fixed;
+    top: 15px;
+    left: 15px;
+    z-index: 900;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 70px;
+    height: 70px;
+    text-decoration: none;
+    background: transparent;
+}
+
+.tam-site-logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.tam-site-logo:focus-visible {
+    outline: 3px solid #b8860b;
+    outline-offset: 4px;
+    border-radius: 8px;
+}
+
+@media (max-width: 600px) {
+    .tam-site-logo {
+        top: 10px;
+        left: 10px;
+        width: 52px;
+        height: 52px;
+    }
+}
+
+
+/* TAM-DUAL-WATERMARKS-V4 */
+
+body > a.tam-site-logo,
+a.tam-site-logo {
+    position: fixed !important;
+    top: 16px !important;
+    left: 16px !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: 70px !important;
+    height: 70px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    transform: none !important;
+    z-index: 2147483000 !important;
+}
+
+a.tam-site-logo img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain;
+}
+
+/* Shared transparent watermark styling */
+.tam-background-watermark {
+    position: fixed !important;
+    top: calc(50% - 80px) !important;
+
+    width: min(480px, 29vw) !important;
+    height: min(480px, 29vw) !important;
+
+    background-image: url('/static/icons/tam-icon-512.png');
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+
+    background-color: transparent !important;
+
+    opacity: 0.20 !important;
+    mix-blend-mode: multiply;
+
+    border: none !important;
+    box-shadow: none !important;
+
+    pointer-events: none !important;
+    user-select: none;
+    z-index: 1 !important;
+}
+
+/* Left watermark */
+.tam-watermark-left {
+    left: calc(50% - 390px) !important;
+    transform: translate(-50%, -50%) !important;
+}
+
+/* Right watermark — mirrored placement */
+.tam-watermark-right {
+    left: calc(50% + 390px) !important;
+    transform: translate(-50%, -50%) !important;
+}
+
+/* Keep both watermarks clear of mobile controls */
+@media (max-width: 1099px) {
+    .tam-background-watermark {
+        display: none !important;
+    }
+}
+
+@media (max-width: 600px) {
+    body > a.tam-site-logo,
+    a.tam-site-logo {
+        top: 10px !important;
+        left: 10px !important;
+        width: 52px !important;
+        height: 52px !important;
+    }
+}

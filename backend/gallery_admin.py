@@ -73,6 +73,64 @@ def require_gallery_super_admin(
     return int(admin["id"])
 
 
+# TAM-PHOTO-ADMIN-AUTH-V1
+def require_gallery_photo_admin(
+    request: Request,
+    db_path: str = DB_PATH,
+) -> int:
+    """
+    Return an authenticated Admin or Super Admin ID.
+
+    Reject missing, disabled, deleted, or incomplete accounts.
+    Never trust an administrator role supplied by the browser.
+    """
+
+    admin_id = request.session.get("admin_id")
+
+    if (
+        isinstance(admin_id, bool)
+        or not isinstance(admin_id, int)
+        or admin_id <= 0
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Administrator login required",
+        )
+
+    with sqlite3.connect(db_path, timeout=10) as connection:
+        connection.row_factory = sqlite3.Row
+
+        admin = connection.execute(
+            """
+            SELECT id, role, active, deleted_at,
+                   must_change_password
+            FROM admins
+            WHERE id = ?
+            """,
+            (admin_id,),
+        ).fetchone()
+
+    if admin is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator access denied",
+        )
+
+    if (
+        admin["role"] not in ("super_admin", "admin")
+        or admin["active"] != 1
+        or admin["deleted_at"] is not None
+        or admin["must_change_password"] != 0
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Active Admin or Super Admin access required",
+        )
+
+    return int(admin["id"])
+
+
+
 # TAM-GALLERY-ADMIN-STATUS-V1
 
 @router.get("/admin/gallery/status")
@@ -615,7 +673,7 @@ def list_gallery_review_photos(
 
     from fastapi.responses import JSONResponse
 
-    require_gallery_super_admin(
+    require_gallery_photo_admin(
         request,
         DB_PATH,
     )
@@ -716,7 +774,7 @@ def admin_gallery_photo_thumbnail(
     event_id = "tam-diwali-2026"
 
     # Initial authorization.
-    admin_id = require_gallery_super_admin(
+    admin_id = require_gallery_photo_admin(
         request,
         DB_PATH,
     )
@@ -772,7 +830,7 @@ def admin_gallery_photo_thumbnail(
     )
 
     # Recheck administrator authorization after processing.
-    current_admin_id = require_gallery_super_admin(
+    current_admin_id = require_gallery_photo_admin(
         request,
         DB_PATH,
     )
@@ -816,4 +874,211 @@ def admin_gallery_photo_thumbnail(
             "Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff",
         },
+    )
+
+
+
+# TAM-GALLERY-MANAGEMENT-PAGE-V1
+@router.get("/admin/gallery/manage")
+def gallery_management_page(request: Request):
+    """
+    Render the Gallery Management page for the Super Admin.
+
+    Security:
+    - Requires an authenticated, active Super Admin.
+    - Reuses the existing administrator CSRF configuration.
+    - Does not modify photos, gallery settings, or consent.
+    """
+    import os
+
+    from fastapi.responses import HTMLResponse
+    from fastapi.templating import Jinja2Templates
+    from itsdangerous import URLSafeTimedSerializer
+
+    admin_id = require_gallery_photo_admin(
+        request,
+        DB_PATH,
+    )
+
+    csrf_nonce = request.session.get("csrf_nonce")
+
+    if not isinstance(csrf_nonce, str) or not csrf_nonce:
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator session security token missing",
+        )
+
+    serializer = URLSafeTimedSerializer(
+        os.environ["SESSION_SECRET"],
+        salt="tam-admin-csrf",
+    )
+
+    csrf_token = serializer.dumps({
+        "admin_id": admin_id,
+        "csrf_nonce": csrf_nonce,
+    })
+
+
+    # Determine the administrator's actual database role.
+    with sqlite3.connect(DB_PATH, timeout=10) as connection:
+        row = connection.execute(
+            "SELECT role FROM admins WHERE id = ?",
+            (admin_id,)
+        ).fetchone()
+
+    if row is None or row[0] not in ("admin", "super_admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator access denied"
+        )
+
+    admin_role = row[0]
+
+    templates = Jinja2Templates(
+        directory="/opt/tam-website/backend/templates"
+    )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_gallery_management.html",
+        context={
+            "admin_id": admin_id,
+            "admin_role": admin_role,
+            "csrf_token": csrf_token,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+# TAM-ADMIN-PHOTO-SOFT-DELETE-V1
+
+@router.post("/admin/gallery/photos/{photo_id}/delete")
+def delete_gallery_photo(
+    photo_id: int,
+    request: Request,
+    csrf_token: str = __import__("fastapi").Form(...),
+    confirmation: str = __import__("fastapi").Form(...),
+):
+    """
+    Soft-delete an event photograph.
+
+    Permitted: active Admin or Super Admin.
+    Original S3 photograph is preserved.
+    """
+
+    from fastapi.responses import JSONResponse
+
+    admin_id = require_gallery_photo_admin(
+        request,
+        DB_PATH,
+    )
+
+    verify_gallery_admin_csrf(
+        request,
+        admin_id,
+        csrf_token,
+    )
+
+    if confirmation != "DELETE":
+        raise HTTPException(
+            status_code=400,
+            detail="Explicit DELETE confirmation required",
+        )
+
+    if photo_id <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid photograph ID",
+        )
+
+    event_id = "tam-diwali-2026"
+
+    with sqlite3.connect(DB_PATH, timeout=15) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("BEGIN IMMEDIATE")
+
+        photo = connection.execute(
+            """
+            SELECT id, status
+            FROM photos
+            WHERE id = ?
+              AND event_id = ?
+            """,
+            (photo_id, event_id),
+        ).fetchone()
+
+        if photo is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Photograph not found",
+            )
+
+        if photo[1] == "deleted":
+            raise HTTPException(
+                status_code=409,
+                detail="Photograph already deleted",
+            )
+
+        # Keep a permanent record of the administrative action.
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS photo_deletion_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                photo_id INTEGER NOT NULL,
+                event_id TEXT NOT NULL,
+                admin_id INTEGER NOT NULL,
+                previous_status TEXT NOT NULL,
+                deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+        cursor = connection.execute(
+            """
+            UPDATE photos
+            SET status = 'deleted',
+                gallery_approved = 0,
+                reviewed_by_admin_id = ?,
+                reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+              AND event_id = ?
+              AND status != 'deleted'
+            """,
+            (admin_id, photo_id, event_id),
+        )
+
+        if cursor.rowcount != 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Photograph could not be deleted",
+            )
+
+        connection.execute(
+            """
+            INSERT INTO photo_deletion_audit (
+                photo_id,
+                event_id,
+                admin_id,
+                previous_status
+            )
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                photo_id,
+                event_id,
+                admin_id,
+                photo[1],
+            ),
+        )
+
+        connection.commit()
+
+    return JSONResponse(
+        {
+            "status": "success",
+            "message": "Photograph removed from the gallery.",
+            "photo_id": photo_id,
+            "deleted": True,
+        },
+        headers={"Cache-Control": "no-store"},
     )

@@ -203,7 +203,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 <!-- TAM-GRAND-SPARKLES-V1 -->
 <link rel="stylesheet"
       href="/static/tam-grand-sparkles.css?v=2">
-<script src="/static/tam-grand-sparkles.js?v=2"
+<script src="/static/tam-grand-sparkles.js?v=3"
         defer></script>
 
 
@@ -211,9 +211,41 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 <link rel="stylesheet"
       href="/static/tam-back-buttons.css?v=2">
 
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<link rel="stylesheet" href="/static/css/tam-site-logo.css">
+
+
+<!-- TAM-LOGO-BACK-CLEARANCE-V1 -->
+<script src="/static/tam-logo-back-clearance.js?v=1" defer></script>
 </head>
 
 <body>
+
+
+
+<!-- TAM-BIG-BACKGROUND-WATERMARK-V1 -->
+<div class="tam-background-watermark tam-watermark-left"
+     aria-hidden="true"></div>
+<div class="tam-background-watermark tam-watermark-right"
+     aria-hidden="true"></div>
+
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<a
+    class="tam-site-logo"
+    href="/events/tam-diwali-2026"
+    aria-label="TAM Event Home"
+    title="Return to TAM Event Home"
+>
+    <img
+        src="/static/icons/tam-icon-512.png"
+        alt="Telugu Association of Montreal"
+        width="70"
+        height="70"
+    >
+</a>
+
     <div class="container tam-exact-border">
         <!-- TAM-SIMPLE-CONTRIBUTOR-DASHBOARD-V1 -->
 
@@ -250,6 +282,37 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             </span>
         </a>
 
+        <!-- TAM-RESTORE-UPLOAD-PHOTOS-V1 -->
+        <a href="/contributor/upload"
+           class="option tam-upload-photos-option"
+           style="
+               background:linear-gradient(
+                   135deg,
+                   #e5fff1,
+                   #c9f5dd
+               ) !important;
+               border:2px solid #7ccfa0 !important;
+               color:#195c3e !important;
+               border-radius:18px;
+               margin-top:18px;
+               box-shadow:0 6px 16px rgba(35,130,85,.13);
+           ">
+            📤 Upload Photos
+            <span class="description"
+                  style="color:#195c3e !important;">
+                Select multiple photos from your phone,
+                computer, or DSLR.
+            </span>
+        </a>
+
     </div>
+
+<!-- TAM-MOBILE-SWIPE-BACK-V1 -->
+<script
+    src="/static/tam-swipe-back.js?v=1"
+    data-tam-swipe-back="/events/tam-diwali-2026"
+    defer>
+</script>
+
 </body>
 </html>

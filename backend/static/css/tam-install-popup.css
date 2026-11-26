@@ -1,0 +1,79 @@
+
+/* TAM-PWA-INSTALL-POPUP-V1 */
+
+#tam-install-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483001;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(19, 9, 49, 0.78);
+    font-family: Arial, sans-serif;
+}
+
+#tam-install-overlay.tam-install-visible {
+    display: flex;
+}
+
+.tam-install-card {
+    width: min(100%, 390px);
+    padding: 28px 22px;
+    border-radius: 20px;
+    background: #ffffff;
+    color: #28164b;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+}
+
+.tam-install-icon {
+    width: 88px;
+    height: 88px;
+    object-fit: contain;
+    margin: 0 auto 12px;
+}
+
+.tam-install-card h2 {
+    font-size: 24px;
+    margin: 8px 0 12px;
+}
+
+.tam-install-card p {
+    font-size: 15px;
+    line-height: 1.6;
+}
+
+.tam-install-button {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    margin-top: 12px;
+    border: 0;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#tam-install-now {
+    background: #6638b5;
+    color: white;
+}
+
+#tam-install-skip {
+    background: #f0ebf7;
+    color: #382259;
+}
+
+#tam-install-instructions {
+    margin-top: 14px;
+    padding: 12px;
+    background: #f5f1fb;
+    border-radius: 10px;
+    font-size: 14px;
+}
+
+#tam-install-instructions[hidden] {
+    display: none;
+}

@@ -1,3 +1,4 @@
+from starlette.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from database import DB_PATH
 import sqlite3
@@ -88,6 +89,10 @@ app.include_router(gallery_api_router)
 from facial_indexing_admin import router as facial_indexing_admin_router
 app.include_router(facial_indexing_admin_router)
 
+from gallery_admin import router as gallery_admin_router
+app.include_router(gallery_admin_router)
+
+
 
 
 # Browser session configuration
@@ -124,7 +129,7 @@ def verify_csrf_token(
     try:
         data = csrf_serializer.loads(
             token,
-            max_age=3600
+            max_age=21600
         )
 
         return (
@@ -137,13 +142,125 @@ def verify_csrf_token(
 
 
 
+# TAM-SESSION-ABSOLUTE-EXPIRY-V1
+import time as tam_session_time
+
+TAM_ADMIN_SESSION_SECONDS = 6 * 60 * 60
+TAM_CONTRIBUTOR_SESSION_SECONDS = 60 * 60
+
+
+# TAM-ADMIN-SESSION-VERSION-V1
+# This middleware runs inside SessionMiddleware, so request.session
+# is available. Old sessions are rejected after a password reset.
+from starlette.middleware.base import BaseHTTPMiddleware
+
+
+class AdminSessionVersionMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        # TAM-SESSION-ABSOLUTE-EXPIRY-V1
+        session = request.session
+
+        if "admin_id" in session or "contributor_id" in session:
+            started = session.get("tam_login_started_at")
+            is_admin = "admin_id" in session
+
+            limit = (
+                TAM_ADMIN_SESSION_SECONDS
+                if is_admin
+                else TAM_CONTRIBUTOR_SESSION_SECONDS
+            )
+
+            now = tam_session_time.time()
+
+            if (
+                type(started) not in (int, float)
+                or started > now
+                or now - started >= limit
+            ):
+                session.clear()
+
+        admin_id = request.session.get("admin_id")
+
+        if admin_id is not None:
+            valid = False
+
+            if (
+                isinstance(admin_id, int)
+                and not isinstance(admin_id, bool)
+            ):
+                with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                    row = conn.execute(
+                        """
+                        SELECT session_version
+                        FROM admins
+                        WHERE id = ?
+                          AND active = 1
+                          AND deleted_at IS NULL
+                        """,
+                        (admin_id,)
+                    ).fetchone()
+
+                valid = (
+                    row is not None
+                    and type(
+                        request.session.get("admin_session_version")
+                    ) is int
+                    and request.session["admin_session_version"] == row[0]
+                )
+
+            # TAM-ADMIN-LINKED-CONTRIBUTOR-SESSION-V1
+            # Admin-only sessions remain valid without a contributor_id.
+            # When an Admin uses Contributor features, verify the link
+            # and Contributor permissions on every request.
+            if valid and "contributor_id" in request.session:
+                contributor_id = request.session.get("contributor_id")
+
+                if type(contributor_id) is not int:
+                    valid = False
+                else:
+                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                        linked = conn.execute(
+                            """
+                            SELECT 1
+                            FROM admin_contributor_links acl
+                            JOIN contributors c
+                              ON c.id = acl.contributor_id
+                            JOIN admins a
+                              ON a.id = acl.admin_id
+                            WHERE acl.admin_id = ?
+                              AND acl.contributor_id = ?
+                              AND a.active = 1
+                              AND a.deleted_at IS NULL
+                              AND a.must_change_password = 0
+                              AND a.role IN ('admin', 'super_admin')
+                              AND c.event_id = ?
+                              AND c.approved = 1
+                              AND c.active = 1
+                              AND c.uploads_enabled = 1
+                              AND c.deleted_at IS NULL
+                            """,
+                            (admin_id, contributor_id, EVENT_ID)
+                        ).fetchone()
+
+                    valid = linked is not None
+
+            if not valid:
+                request.session.clear()
+
+        return await call_next(request)
+
+
+# Register version checking first, then SessionMiddleware.
+# Starlette runs the last added middleware on the outside.
+app.add_middleware(AdminSessionVersionMiddleware)
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET,
     session_cookie="tam_admin_session",
     same_site="lax",
     https_only=os.environ.get("TAM_PRODUCTION") == "1",
-    max_age=3600
+    max_age=21600
 )
 
 # HTML templates configuration
@@ -275,7 +392,7 @@ def authenticate_admin(username: str, password: str):
 
         admin = connection.execute(
             """
-            SELECT id, name, username, password_hash, role, must_change_password
+            SELECT id, name, username, password_hash, role, must_change_password, session_version
             FROM admins
             WHERE username = ?
             AND active = 1
@@ -300,7 +417,8 @@ def authenticate_admin(username: str, password: str):
         "name": admin["name"],
         "username": admin["username"],
         "role": admin["role"],
-        "must_change_password": bool(admin["must_change_password"])
+        "must_change_password": bool(admin["must_change_password"]),
+        "session_version": admin["session_version"]
     }
 
 
@@ -339,6 +457,12 @@ def has_admin_permission(admin_id: int, permission: str) -> bool:
 
         if admin["role"] != "admin":
             return False
+
+        # TAM-ALL-ACTIVE-ADMINS-MANAGE-CONTRIBUTORS-V1
+        # Role and password-setup checks above must pass first.
+        # All active regular Admins may manage contributors.
+        if permission == "can_approve_contributors":
+            return True
 
         permissions = connection.execute(
             """
@@ -412,34 +536,41 @@ async def upload_photo(
         )
 
 
-    # Normalize supported photos to JPEG before storage and indexing.
-    try:
-        with Image.open(BytesIO(data)) as image:
-            if image.format not in {"JPEG", "PNG", "WEBP", "HEIF", "MPO"}:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Detected photo format: {image.format or 'unknown'}. "
-                        "Choose a JPEG, PNG, WebP, HEIC/HEIF, or MPO photo."
+    def normalize_uploaded_photo(image_data):
+        # Normalize supported photos to JPEG before storage and indexing.
+        try:
+            with Image.open(BytesIO(image_data)) as image:
+                if image.format not in {"JPEG", "PNG", "WEBP", "HEIF", "MPO"}:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Detected photo format: {image.format or 'unknown'}. "
+                            "Choose a JPEG, PNG, WebP, HEIC/HEIF, or MPO photo."
+                        )
                     )
-                )
 
-            oriented = ImageOps.exif_transpose(image)
-            if "A" in oriented.getbands() or "transparency" in oriented.info:
-                rgba = oriented.convert("RGBA")
-                rgb = Image.new("RGB", rgba.size, "white")
-                rgb.paste(rgba, mask=rgba.getchannel("A"))
-            else:
-                rgb = oriented.convert("RGB")
+                oriented = ImageOps.exif_transpose(image)
+                if "A" in oriented.getbands() or "transparency" in oriented.info:
+                    rgba = oriented.convert("RGBA")
+                    rgb = Image.new("RGB", rgba.size, "white")
+                    rgb.paste(rgba, mask=rgba.getchannel("A"))
+                else:
+                    rgb = oriented.convert("RGB")
 
-            output = BytesIO()
-            rgb.save(output, format="JPEG", quality=92)
-            data = output.getvalue()
-    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
-        raise HTTPException(
-            status_code=400,
-            detail="Could not read this photo. Try exporting it as a JPEG."
-        )
+                output = BytesIO()
+                rgb.save(output, format="JPEG", quality=92)
+                return output.getvalue()
+        except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+            raise HTTPException(
+                status_code=400,
+                detail="Could not read this photo. Try exporting it as a JPEG."
+            )
+
+
+    data = await run_in_threadpool(
+        normalize_uploaded_photo,
+        data
+    )
 
     if len(data) > MAX_PHOTO_SIZE:
         raise HTTPException(status_code=413, detail="Converted photo exceeds 100 MB")
@@ -492,7 +623,8 @@ async def upload_photo(
     try:
         # Upload the photograph to the correct
         # event and contributor folder in S3.
-        s3_result = upload_photo_to_s3(
+        s3_result = await run_in_threadpool(
+            upload_photo_to_s3,
             event_id,
             contributor[0],
             filepath
@@ -548,8 +680,68 @@ async def upload_photo(
             detail="Photo could not be saved. Please try again."
         )
 
+    # Optional facial indexing for permitted demo photographs.
+    # Photo upload is already committed before this section.
+    indexing_status = "not_requested"
+
+    try:
+        demo_form = await request.form()
+        demo_requested = (
+            demo_form.get("demo_face_index") == "yes"
+        )
+
+        if demo_requested:
+            from rekognition_service import TAM_COLLECTION_ID
+
+            with sqlite3.connect(DB_PATH, timeout=15) as connection:
+                connection.execute("PRAGMA foreign_keys = ON")
+                connection.execute("BEGIN IMMEDIATE")
+
+                connection.execute(
+                    """
+                    INSERT INTO photo_face_authorizations (
+                        photo_id,
+                        authorized,
+                        consent_reference,
+                        authorized_at
+                    )
+                    VALUES (?, 1, ?, CURRENT_TIMESTAMP)
+                    """,
+                    (
+                        photo_id,
+                        f"demo-contributor-confirmed:{contributor[0]}:{photo_id}"
+                    )
+                )
+
+                connection.execute(
+                    """
+                    INSERT INTO photo_index_jobs (
+                        photo_id,
+                        collection_id,
+                        status
+                    )
+                    VALUES (?, ?, 'pending')
+                    """,
+                    (photo_id, TAM_COLLECTION_ID)
+                )
+
+                connection.commit()
+
+            indexing_status = "pending"
+
+    except Exception as error:
+        # Never delete a successfully uploaded photograph
+        # because optional indexing registration failed.
+        indexing_status = "registration_failed"
+        print(
+            f"WARNING: Demo indexing registration failed "
+            f"for photo {photo_id}: {type(error).__name__}: {error}",
+            flush=True
+        )
+
     return {
         "message": "Photo uploaded successfully",
+        "indexing_status": indexing_status,
         "photo_id": photo_id,
         "filename": filename,
         "status": "available",
@@ -604,6 +796,7 @@ def register_contributor(data: ContributorRegistration, request: Request):
             FROM contributors
             WHERE event_id = ?
               AND LOWER(TRIM(name)) = LOWER(TRIM(?))
+              AND deleted_at IS NULL
             LIMIT 1
             """,
             (EVENT_ID, name)
@@ -624,12 +817,16 @@ def register_contributor(data: ContributorRegistration, request: Request):
             INSERT INTO contributors
                 (name, mobile_number, event_id, approved, password_hash, email)
             VALUES (?, ?, ?, 0, ?, ?)
-            ON CONFLICT(event_id, email COLLATE NOCASE) DO NOTHING
+            ON CONFLICT(event_id, email COLLATE NOCASE)
+            WHERE deleted_at IS NULL DO NOTHING
+            -- TAM-CONTRIBUTOR-REREGISTRATION-V2
             """,
             (name, mobile, EVENT_ID, password_hash, email)
         )
         if cursor.rowcount != 1:
-            raise HTTPException(409, "An account already uses this email for this event.")
+            raise HTTPException(
+                409, "An active contributor account already uses this email."
+            )
         contributor_id = cursor.lastrowid
 
         # TAM-ATOMIC-CONTRIBUTOR-REGISTRATION-V1
@@ -720,7 +917,216 @@ def login_contributor(
     data: ContributorLogin,
     request: Request
 ):
-    # Look up contributor by registered name.
+    # TAM-UNIFIED-ADMIN-CONTRIBUTOR-LOGIN-V1
+    # Allow linked Admins to use their existing Admin credentials
+    # without copying passwords or assigning Admin IDs as Contributor IDs.
+    #
+    # Admin login is attempted only for the username/name field.
+    # Regular email-based Contributor authentication remains unchanged.
+
+    if (
+        data.name is not None
+        and data.name.strip()
+        and not (data.email and data.email.strip())
+    ):
+        admin = authenticate_admin(
+            data.name.strip(),
+            data.password
+        )
+
+        if admin is not None:
+
+            # Admins must complete password setup before gaining access.
+            if admin["must_change_password"]:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Admin password change is required"
+                )
+
+            if admin["role"] not in ("admin", "super_admin"):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Administrator account is not authorized"
+                )
+
+            # Resolve the linked Contributor identity.
+            # Never assume Admin ID equals Contributor ID.
+            with sqlite3.connect(DB_PATH, timeout=15) as connection:
+                connection.row_factory = sqlite3.Row
+
+                linked = connection.execute(
+                    """
+                    SELECT
+                        c.id,
+                        c.name
+                    FROM admin_contributor_links acl
+                    JOIN contributors c
+                        ON c.id = acl.contributor_id
+                    JOIN admins a
+                        ON a.id = acl.admin_id
+                    WHERE acl.admin_id = ?
+                      AND a.active = 1
+                      AND a.deleted_at IS NULL
+                      AND a.must_change_password = 0
+                      AND a.role IN ('admin', 'super_admin')
+                      AND c.event_id = ?
+                      AND c.approved = 1
+                      AND c.active = 1
+                      AND c.uploads_enabled = 1
+                      AND c.deleted_at IS NULL
+                    """,
+                    (admin["id"], EVENT_ID)
+                ).fetchone()
+
+            # TAM-AUTO-ADMIN-CONTRIBUTOR-PROVISION-V1
+            # Provision only when the Admin has NO existing link.
+            # Never replace a disabled or deleted linked Contributor.
+            if linked is None:
+                with sqlite3.connect(DB_PATH, timeout=30) as conn:
+                    conn.row_factory = sqlite3.Row
+                    conn.execute("PRAGMA foreign_keys = ON")
+                    conn.execute("BEGIN IMMEDIATE")
+
+                    existing_link = conn.execute(
+                        """
+                        SELECT contributor_id
+                        FROM admin_contributor_links
+                        WHERE admin_id = ?
+                        """,
+                        (admin["id"],)
+                    ).fetchone()
+
+                    if existing_link is None:
+                        # Recheck authorization inside the write
+                        # transaction before creating an identity.
+                        eligible_admin = conn.execute(
+                            """
+                            SELECT id, username
+                            FROM admins
+                            WHERE id = ?
+                              AND active = 1
+                              AND deleted_at IS NULL
+                              AND must_change_password = 0
+                              AND role IN ('admin', 'super_admin')
+                              AND session_version = ?
+                            """,
+                            (
+                                admin["id"],
+                                admin["session_version"]
+                            )
+                        ).fetchone()
+
+                        if eligible_admin is None:
+                            raise HTTPException(
+                                status_code=403,
+                                detail="Admin authorization has changed"
+                            )
+
+                        contributor_name = (
+                            f"TAM Admin {eligible_admin['username']} "
+                            f"[admin-{admin['id']}]"
+                        )
+
+                        # TAM-AUTO-PROVISION-DATETIME-FIX-V1
+                        from datetime import datetime, timezone
+
+                        now = datetime.now(
+                            timezone.utc
+                        ).isoformat()
+
+                        cursor = conn.execute(
+                            """
+                            INSERT INTO contributors (
+                                name,
+                                event_id,
+                                approved,
+                                mobile_number,
+                                uploads_enabled,
+                                active,
+                                password_hash,
+                                email,
+                                approved_by_admin_id,
+                                approved_at
+                            )
+                            VALUES (?, ?, 1, NULL, 1, 1,
+                                    NULL, NULL, ?, ?)
+                            """,
+                            (
+                                contributor_name,
+                                EVENT_ID,
+                                admin["id"],
+                                now
+                            )
+                        )
+
+                        new_contributor_id = cursor.lastrowid
+
+                        conn.execute(
+                            """
+                            INSERT INTO admin_contributor_links (
+                                admin_id,
+                                contributor_id
+                            )
+                            VALUES (?, ?)
+                            """,
+                            (
+                                admin["id"],
+                                new_contributor_id
+                            )
+                        )
+
+                        linked = conn.execute(
+                            """
+                            SELECT id, name
+                            FROM contributors
+                            WHERE id = ?
+                              AND event_id = ?
+                              AND approved = 1
+                              AND active = 1
+                              AND uploads_enabled = 1
+                              AND deleted_at IS NULL
+                            """,
+                            (
+                                new_contributor_id,
+                                EVENT_ID
+                            )
+                        ).fetchone()
+
+                    # If a link already exists, it must pass the
+                    # original authorization checks. Do not
+                    # silently create a replacement identity.
+
+            if linked is None:
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        "Admin account is not linked to an active "
+                        "Contributor account"
+                    )
+                )
+
+            # Store both identities.
+            # The existing session-version middleware validates the Admin.
+            # Contributor routes continue checking Contributor permissions.
+            request.session.clear()
+
+            request.session["admin_id"] = admin["id"]
+            request.session["admin_session_version"] = (
+                admin["session_version"]
+            )
+            request.session["csrf_nonce"] = secrets.token_urlsafe(32)
+            request.session["tam_login_started_at"] = int(
+                tam_session_time.time()
+            )
+            request.session["contributor_id"] = linked["id"]
+
+            return {
+                "message": "Contributor login successful",
+                "contributor_id": linked["id"],
+                "name": linked["name"]
+            }
+
+    # Existing Contributor authentication is preserved.
     # Keep legacy ID login temporarily for compatibility.
     contributor = None
 
@@ -732,7 +1138,10 @@ def login_contributor(
                 """
                 SELECT id, name, password_hash, approved, active, deleted_at
                 FROM contributors
-                WHERE event_id = ? AND email = ? COLLATE NOCASE
+                WHERE event_id = ?
+                  AND email = ? COLLATE NOCASE
+                  AND deleted_at IS NULL
+                -- TAM-CONTRIBUTOR-LOGIN-REREGISTRATION-V1
                 """,
                 (EVENT_ID, data.email.strip().lower()),
             ).fetchone()
@@ -800,6 +1209,9 @@ def login_contributor(
     # Create an authenticated contributor session.
     request.session.clear()
     request.session["contributor_id"] = contributor["id"]
+    request.session["tam_login_started_at"] = int(
+        tam_session_time.time()
+    )
 
     return {
         "message": "Contributor login successful",
@@ -931,6 +1343,127 @@ def list_contributors(
 
 
 
+
+# TAM-CONTRIBUTOR-REJECTION-V1
+@app.post("/admin/reject/{contributor_id}")
+def reject_contributor(
+    contributor_id: int,
+    request: Request,
+    csrf_token: str = Form(...)
+):
+    from fastapi.responses import JSONResponse
+
+    admin_id = request.session.get("admin_id")
+
+    if type(admin_id) is not int:
+        raise HTTPException(
+            status_code=401,
+            detail="Administrator login required"
+        )
+
+    if not has_admin_permission(
+        admin_id, "can_approve_contributors"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Contributor approval permission required"
+        )
+
+    if not verify_csrf_token(
+        csrf_token,
+        admin_id,
+        request.session.get("csrf_nonce", "")
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid or expired security token"
+        )
+
+    with sqlite3.connect(DB_PATH, timeout=30) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+
+        try:
+            contributor = connection.execute(
+                """
+                SELECT id, name
+                FROM contributors
+                WHERE id = ?
+                  AND event_id = ?
+                  AND approved = 0
+                  AND active = 1
+                  AND deleted_at IS NULL
+                """,
+                (contributor_id, EVENT_ID)
+            ).fetchone()
+
+            if contributor is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Contributor is no longer pending approval"
+                )
+
+            # Never reject an identity linked to an Admin account.
+            linked = connection.execute(
+                """
+                SELECT 1
+                FROM admin_contributor_links
+                WHERE contributor_id = ?
+                """,
+                (contributor_id,)
+            ).fetchone()
+
+            if linked:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Linked Admin contributors cannot be rejected"
+                )
+
+            cursor = connection.execute(
+                """
+                UPDATE contributors
+                SET active = 0,
+                    uploads_enabled = 0
+                WHERE id = ?
+                  AND event_id = ?
+                  AND approved = 0
+                  AND active = 1
+                  AND deleted_at IS NULL
+                """,
+                (contributor_id, EVENT_ID)
+            )
+
+            if cursor.rowcount != 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Contributor status changed"
+                )
+
+            connection.execute(
+                """
+                INSERT INTO contributor_rejection_audit (
+                    contributor_id,
+                    event_id,
+                    rejected_by_admin_id,
+                    rejected_at
+                )
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (contributor_id, EVENT_ID, admin_id)
+            )
+
+            connection.commit()
+
+        except Exception:
+            connection.rollback()
+            raise
+
+    return JSONResponse({
+        "status": "rejected",
+        "contributor_id": contributor_id,
+        "message": "Contributor registration rejected."
+    })
+
+
 # TAM-ADMIN-PENDING-NOTIFICATIONS-V1
 @app.get("/admin/notifications/pending-contributors")
 def admin_pending_contributor_notifications(request: Request):
@@ -963,7 +1496,7 @@ def admin_pending_contributor_notifications(request: Request):
 
         rows = connection.execute(
             """
-            SELECT id, name
+            SELECT id, name, mobile_number
             FROM contributors
             WHERE event_id = ?
               AND approved = 0
@@ -976,8 +1509,19 @@ def admin_pending_contributor_notifications(request: Request):
 
     return {
         "total_pending": len(rows),
+        "csrf_token": create_csrf_token(
+            admin_id,
+            request.session.get("csrf_nonce", "")
+        ),
         "contributors": [
-            {"id": row["id"], "name": row["name"]}
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "mobile_masked": (
+                    "******" + str(row["mobile_number"])[-4:]
+                    if row["mobile_number"] else None
+                )
+            }
             for row in rows
         ]
     }
@@ -1048,7 +1592,11 @@ async def admin_login(
 
     request.session.clear()
     request.session["admin_id"] = admin["id"]
+    request.session["admin_session_version"] = admin["session_version"]
     request.session["csrf_nonce"] = secrets.token_urlsafe(32)
+    request.session["tam_login_started_at"] = int(
+        tam_session_time.time()
+    )
 
     # New Admins must change their temporary password.
     if admin["must_change_password"]:
@@ -1109,7 +1657,8 @@ async def admin_dashboard(request: Request):
 
         rows = connection.execute(
             """
-            SELECT id, name, mobile_number, approved
+            SELECT id, name, mobile_number,
+                   approved, uploads_enabled
             FROM contributors
             WHERE event_id = ?
               AND active = 1
@@ -1121,31 +1670,45 @@ async def admin_dashboard(request: Request):
 
     contributors = []
 
+    # TAM-ADMIN-CONTRIBUTOR-CONTACTS-V1
+    # Contributor contact numbers are shown only to authenticated Admins.
+    # Attendee consent records are managed separately.
     for row in rows:
-        mobile = row["mobile_number"] or ""
-        digits = "".join(c for c in mobile if c.isdigit())
+        mobile = (row["mobile_number"] or "").strip()
 
-        masked_mobile = (
-            "****" + digits[-4:]
-            if len(digits) >= 4
-            else "Not provided"
-        )
+        if not row["approved"]:
+            status = "Pending Approval"
+        elif not row["uploads_enabled"]:
+            status = "Uploads Disabled"
+        else:
+            status = "Active"
 
         contributors.append({
             "id": row["id"],
             "name": row["name"],
-            "mobile": masked_mobile,
-            "approved": bool(row["approved"])
+            "mobile": mobile if mobile else "Not provided",
+            "status": status
         })
 
+    # TAM-ADMIN-DASHBOARD-NO-CACHE-V1
+    # Prevent caching of contributor contact information.
     return templates.TemplateResponse(
         request=request,
         name="admin_dashboard.html",
+        headers={
+            "Cache-Control": "no-store, private",
+            "Pragma": "no-cache",
+            "Referrer-Policy": "no-referrer",
+        },
         context={
             "admin_id": admin_id,
             "admin_name": admin[0],
             "admin_role": admin[1],
-            "contributors": contributors
+            "contributors": contributors,
+            "csrf_token": create_csrf_token(
+                admin_id,
+                request.session.get("csrf_nonce", "")
+            )
         }
     )
 
@@ -1300,11 +1863,21 @@ async def create_organizer(
         name = name.strip()
         username = username.strip().lower()
 
-        if not name or not username or len(password) < 12:
+        if not name or not username:
             raise HTTPException(
                 status_code=400,
-                detail="Name, username, and a password of at least 12 characters are required"
+                detail="Name and username are required"
             )
+
+        from admin_password_policy import validate_admin_password
+
+        try:
+            validate_admin_password(password)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=400,
+                detail=str(error)
+            ) from error
 
         # Check for an existing username
         existing = connection.execute(
@@ -1351,6 +1924,254 @@ async def create_organizer(
     return RedirectResponse(
         url="/admin/organizers",
         status_code=303
+    )
+
+
+
+# TAM-SUPER-ADMIN-RESET-REGULAR-ADMIN-V1
+@app.post("/admin/organizers/{organizer_id}/reset-password")
+async def super_admin_reset_regular_admin_password(
+    organizer_id: int,
+    request: Request,
+    csrf_token: str = Form(...)
+):
+    import html
+    import string
+    from admin_password_policy import validate_admin_password
+
+    # Require an authenticated Super Admin session.
+    admin_id = request.session.get("admin_id")
+
+    if type(admin_id) is not int:
+        raise HTTPException(
+            status_code=401,
+            detail="Administrator login required"
+        )
+
+    # Verify the request belongs to the current session.
+    csrf_nonce = request.session.get("csrf_nonce", "")
+
+    if not csrf_nonce or not verify_csrf_token(
+        csrf_token, admin_id, csrf_nonce
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid or expired security token"
+        )
+
+    # Only an active Super Admin who has completed
+    # password setup can reset regular Admin passwords.
+    with sqlite3.connect(DB_PATH, timeout=30) as connection:
+        connection.row_factory = sqlite3.Row
+
+        current_admin = connection.execute(
+            """
+            SELECT id, role, must_change_password
+            FROM admins
+            WHERE id = ?
+              AND active = 1
+              AND deleted_at IS NULL
+            """,
+            (admin_id,)
+        ).fetchone()
+
+        if (
+            current_admin is None
+            or current_admin["role"] != "super_admin"
+            or current_admin["must_change_password"]
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Super Admin access required"
+            )
+
+        # Prevent resetting the Super Admin account.
+        if organizer_id == admin_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Super Admin password reset is not supported"
+            )
+
+        target = connection.execute(
+            """
+            SELECT id, name, username
+            FROM admins
+            WHERE id = ?
+              AND role = 'admin'
+              AND active = 1
+              AND deleted_at IS NULL
+            """,
+            (organizer_id,)
+        ).fetchone()
+
+        if target is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Active regular Admin account not found"
+            )
+
+        # Create a cryptographically secure temporary password.
+        # Ensure all required password character classes.
+        upper = string.ascii_uppercase
+        lower = string.ascii_lowercase
+        digits = string.digits
+        symbols = "!@#$%&*-_"
+
+        alphabet = upper + lower + digits + symbols
+
+        temporary_password = None
+
+        for _ in range(30):
+            characters = [
+                secrets.choice(upper),
+                secrets.choice(lower),
+                secrets.choice(digits),
+                secrets.choice(symbols),
+            ]
+
+            characters += [
+                secrets.choice(alphabet)
+                for _ in range(16)
+            ]
+
+            # Secure Fisher-Yates shuffle.
+            for index in range(len(characters) - 1, 0, -1):
+                swap_index = secrets.randbelow(index + 1)
+                characters[index], characters[swap_index] = (
+                    characters[swap_index],
+                    characters[index]
+                )
+
+            candidate = "".join(characters)
+
+            try:
+                validate_admin_password(candidate)
+                temporary_password = candidate
+                break
+            except ValueError:
+                continue
+
+        if temporary_password is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Could not generate a compliant temporary password"
+            )
+
+        new_hash = password_hasher.hash(temporary_password)
+
+        # Update the password and revoke previous sessions atomically.
+        connection.execute("BEGIN IMMEDIATE")
+
+        cursor = connection.execute(
+            """
+            UPDATE admins
+            SET password_hash = ?,
+                must_change_password = 1,
+                session_version = session_version + 1
+            WHERE id = ?
+              AND role = 'admin'
+              AND active = 1
+              AND deleted_at IS NULL
+            """,
+            (new_hash, organizer_id)
+        )
+
+        if cursor.rowcount != 1:
+            connection.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="Admin account status changed. Reset cancelled."
+            )
+
+        connection.commit()
+
+    # Display the temporary password once.
+    # Never log or persist its plaintext value.
+    safe_name = html.escape(str(target["name"]))
+    safe_username = html.escape(str(target["username"]))
+    safe_password = html.escape(temporary_password)
+
+    page = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>TAM Admin Password Reset</title>
+      <style>
+        body {{
+          font-family: Arial, sans-serif;
+          background: #f6f7fb;
+          padding: 30px;
+          color: #222;
+        }}
+        .card {{
+          max-width: 560px;
+          margin: 40px auto;
+          background: white;
+          padding: 28px;
+          border-radius: 12px;
+          box-shadow: 0 4px 18px rgba(0,0,0,.08);
+        }}
+        .password {{
+          background: #f0f4ff;
+          padding: 16px;
+          border-radius: 8px;
+          font-size: 20px;
+          font-weight: bold;
+          overflow-wrap: anywhere;
+          user-select: all;
+        }}
+        .warning {{
+          color: #a12d2d;
+          font-weight: bold;
+        }}
+        a {{
+          display: inline-block;
+          margin-top: 20px;
+          color: #154a9c;
+        }}
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h1>Password Reset Successful</h1>
+
+        <p><strong>Admin:</strong> {safe_name}</p>
+        <p><strong>Username:</strong> {safe_username}</p>
+
+        <p>Temporary password:</p>
+
+        <div class="password">{safe_password}</div>
+
+        <p class="warning">
+          This password is displayed only once.
+          Copy it and share it securely with the Admin.
+        </p>
+
+        <p>
+          All previous Admin sessions have been revoked.
+          The Admin must change this password at the next login.
+        </p>
+
+        <a href="/admin/organizers">
+          Return to Manage Organizers
+        </a>
+      </div>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(
+        content=page,
+        status_code=200,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+            "Referrer-Policy": "no-referrer",
+            "X-Frame-Options": "DENY",
+            "X-Content-Type-Options": "nosniff",
+        }
     )
 
 
@@ -1592,18 +2413,35 @@ async def change_admin_password(
             detail="Invalid or expired security token"
         )
 
-    # Validate the new password.
-    if new_password != confirm_password:
-        raise HTTPException(
+
+    # Show validation errors on the existing form, not as JSON.
+    def password_form_error(message: str):
+        return templates.TemplateResponse(
+            request=request,
+            name="admin_change_password.html",
+            context={
+                "csrf_token": create_csrf_token(
+                    admin_id,
+                    csrf_nonce
+                ),
+                "error": message,
+            },
             status_code=400,
-            detail="New passwords do not match"
+            headers={"Cache-Control": "no-store"},
         )
 
-    if len(new_password) < 12:
-        raise HTTPException(
-            status_code=400,
-            detail="New password must be at least 12 characters"
+    # Validate the new password.
+    if new_password != confirm_password:
+        return password_form_error(
+            "New passwords do not match. Please try again."
         )
+
+    from admin_password_policy import validate_admin_password
+
+    try:
+        validate_admin_password(new_password)
+    except ValueError as error:
+        return password_form_error(str(error))
 
     with sqlite3.connect(DB_PATH) as connection:
         admin = connection.execute(
@@ -1627,9 +2465,8 @@ async def change_admin_password(
         try:
             password_hasher.verify(admin[0], current_password)
         except Exception:
-            raise HTTPException(
-                status_code=400,
-                detail="Incorrect temporary password"
+            return password_form_error(
+                "Incorrect temporary password. Please try again."
             )
 
         
@@ -1644,9 +2481,8 @@ async def change_admin_password(
             same_password = False
 
         if same_password:
-            raise HTTPException(
-                status_code=400,
-                detail="Choose a different password"
+            return password_form_error(
+                "Choose a new password different from your temporary password."
             )
 
 
@@ -3035,14 +3871,73 @@ async def guest_photo_thumbnail(
             detail="Photograph unavailable."
         )
 
-    image_bytes = get_tam_s3_client().get_object(
-        Bucket=photo["s3_bucket"],
-        Key=photo["s3_key"]
-    )["Body"].read()
+    # Cache only after guest access has been verified.
+    # Keep thumbnail generation outside the event loop.
+    def load_cached_thumbnail():
+        import hashlib
+        import os
+        import tempfile
+        from pathlib import Path
 
-    thumbnail = create_guest_thumbnail(
-        image_bytes,
-        photo["contributor_name"]
+        cache_dir = Path(
+            "/data/tam-website/cache/thumbnails"
+        )
+
+        cache_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+            mode=0o700
+        )
+
+        cache_key = hashlib.sha256(
+            (
+                f"tam-thumbnail-v1:{EVENT_ID}:{photo_id}:"
+                f"{photo['s3_key']}:"
+                f"{photo['contributor_name']}"
+            ).encode("utf-8")
+        ).hexdigest()
+
+        cache_file = cache_dir / f"{cache_key}.jpg"
+
+        if cache_file.is_file():
+            return cache_file.read_bytes()
+
+        image_bytes = get_tam_s3_client().get_object(
+            Bucket=photo["s3_bucket"],
+            Key=photo["s3_key"]
+        )["Body"].read()
+
+        result = create_guest_thumbnail(
+            image_bytes,
+            photo["contributor_name"]
+        )
+
+        # Write atomically so concurrent requests never
+        # receive partially generated thumbnails.
+        temp_path = None
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=cache_dir,
+                prefix=".tam-thumb-",
+                suffix=".tmp",
+                delete=False
+            ) as temp:
+                temp_path = Path(temp.name)
+                temp.write(result)
+
+            os.chmod(temp_path, 0o600)
+            os.replace(temp_path, cache_file)
+
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+
+        return result
+
+    thumbnail = await run_in_threadpool(
+        load_cached_thumbnail
     )
 
     return Response(
@@ -3234,7 +4129,10 @@ async def search_guest_photos(request: Request):
 
 
     try:
-        matches = find_matching_event_photos(selfie_bytes)
+        matches = await run_in_threadpool(
+            find_matching_event_photos,
+            selfie_bytes
+        )
 
     except ValueError as error:
         response = JSONResponse(
@@ -3360,7 +4258,62 @@ async def search_guest_photos(request: Request):
 EVENT_PORTAL_URL = "/events/tam-diwali-2026"
 EVENT_CONSENT_URL = "/attendee-consent?entry=event"
 EVENT_CONSENT_COOKIE = "tam_event_consent"
-EVENT_CONSENT_MAX_AGE = 24 * 60 * 60
+
+# TAM-DECLINED-DECISION-RECOGNITION-V1
+EVENT_DECISION_COOKIE = "tam_event_decision"
+
+
+def recognized_event_decline(request):
+    """Recognize a declined decision without granting photo-search consent."""
+    from itsdangerous import BadData
+
+    if event_consent_seconds_remaining() <= 0:
+        return False
+
+    token = request.cookies.get(EVENT_DECISION_COOKIE)
+
+    if not token:
+        return False
+
+    try:
+        claim = event_consent_signer().loads(
+            token,
+            max_age=EVENT_CONSENT_MAX_AGE
+        )
+    except BadData:
+        return False
+
+    return (
+        isinstance(claim, dict)
+        and claim.get("event_id") == EVENT_ID
+        and claim.get("decision") == "decline"
+    )
+
+# TAM-CONSENT-EXPIRATION-V2
+# Consent access ends after the agreed Diwali photo-access period.
+# Deadline: November 30, 2026, 11:59:59 PM America/Toronto.
+# TAM-PERSISTENT-CONSENT-RECOGNITION-V1
+# Long-lived recognition of existing consent.
+# This does NOT extend the event photograph access deadline.
+EVENT_CONSENT_MAX_AGE = 400 * 24 * 60 * 60
+
+def event_consent_seconds_remaining():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    montreal = ZoneInfo("America/Toronto")
+
+    deadline = datetime(
+        2026, 11, 30, 23, 59, 59,
+        tzinfo=montreal
+    )
+
+    remaining = int(
+        (deadline - datetime.now(montreal)).total_seconds()
+    )
+
+    return max(0, min(EVENT_CONSENT_MAX_AGE, remaining))
+
 
 
 def event_consent_signer():
@@ -3373,6 +4326,10 @@ def event_consent_signer():
 
 def active_event_selfie_consent(request):
     from itsdangerous import BadData
+
+    # Reject consent access after the fixed event deadline.
+    if event_consent_seconds_remaining() <= 0:
+        return None
 
     token = request.cookies.get(EVENT_CONSENT_COOKIE)
     if not token:
@@ -3482,6 +4439,7 @@ async def tam_event_portal(request: Request):
         not agenda_only
         and contributor is None
         and active_event_selfie_consent(request) is None
+        and not recognized_event_decline(request)
     ):
         return RedirectResponse(
             EVENT_CONSENT_URL,
@@ -3631,6 +4589,19 @@ async def submit_attendee_consent(request: Request):
             samesite="lax"
         )
 
+        response.set_cookie(
+            EVENT_DECISION_COOKIE,
+            event_consent_signer().dumps({
+                "event_id": EVENT_ID,
+                "decision": "decline"
+            }),
+            max_age=EVENT_CONSENT_MAX_AGE,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/"
+        )
+
         response.delete_cookie(EVENT_CONSENT_COOKIE, path="/", secure=True)
         response.delete_cookie("tam_gallery_session", path="/", secure=True)
         response.delete_cookie("tam_gallery_session", path="/api/gallery", secure=True)
@@ -3707,6 +4678,12 @@ async def submit_attendee_consent(request: Request):
         record["consent_id"] for record in records
         if record["consent_type"] == "facial_indexing"
     )
+    response.delete_cookie(
+        EVENT_DECISION_COOKIE,
+        path="/",
+        secure=True
+    )
+
     response.set_cookie(
         EVENT_CONSENT_COOKIE,
         event_consent_signer().dumps({

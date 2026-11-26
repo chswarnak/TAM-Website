@@ -264,9 +264,49 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 }
 </style>
 
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<link rel="stylesheet" href="/static/css/tam-site-logo.css">
+
+
+<!-- TAM-CONSENT-PWA-ENTRY-V1 -->
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="theme-color" content="#173b76">
+<link rel="apple-touch-icon"
+      href="/static/icons/apple-touch-icon.png">
+<link rel="stylesheet"
+      href="/static/css/tam-install-popup.css">
+<script src="/static/tam-pwa-register.js" defer></script>
+<script src="/static/tam-install-popup.js" defer></script>
+
 </head>
 
 <body>
+
+
+
+<!-- TAM-BIG-BACKGROUND-WATERMARK-V1 -->
+<div class="tam-background-watermark tam-watermark-left"
+     aria-hidden="true"></div>
+<div class="tam-background-watermark tam-watermark-right"
+     aria-hidden="true"></div>
+
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<a
+    class="tam-site-logo"
+    href="/events/tam-diwali-2026"
+    aria-label="TAM Event Home"
+    title="Return to TAM Event Home"
+>
+    <img
+        src="/static/icons/tam-icon-512.png"
+        alt="Telugu Association of Montreal"
+        width="70"
+        height="70"
+    >
+</a>
+
     <main class="container">
         <h1>TAM Event Photo Consent</h1>
 
@@ -431,7 +471,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
                             "Your decision has been respected. " +
                             "Facial recognition will not be performed.";
                         if (new URLSearchParams(location.search).get("entry") === "event") {
-                            window.location.assign("/events/tam-diwali-2026?agenda=1");
+                            window.location.assign("/events/tam-diwali-2026");
                             return;
                         }
                     } else if (data.status === "recorded") {
@@ -471,5 +511,40 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             });
         </script>
 
-    </body>
+    <!-- TAM PWA INSTALL POPUP -->
+<div id="tam-install-overlay" role="dialog"
+     aria-modal="true"
+     aria-labelledby="tam-install-title">
+
+  <div class="tam-install-card">
+
+    <img class="tam-install-icon"
+         src="/static/icons/tam-icon-192.png"
+         alt="TAM Logo">
+
+    <h2 id="tam-install-title">🪔 TAM Smart Photos</h2>
+
+    <p>
+      Install the TAM Smart Photos app to explore
+      event photographs, browse the gallery,
+      and find your pictures using a selfie!
+    </p>
+
+    <button id="tam-install-now"
+            class="tam-install-button"
+            type="button">
+      Install TAM App
+    </button>
+
+    <button id="tam-install-skip"
+            class="tam-install-button"
+            type="button">
+      Continue in Browser
+    </button>
+
+    <div id="tam-install-instructions" hidden></div>
+
+  </div>
+</div>
+</body>
 </html>

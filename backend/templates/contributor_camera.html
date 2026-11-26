@@ -365,7 +365,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 <!-- TAM-GRAND-SPARKLES-V1 -->
 <link rel="stylesheet"
       href="/static/tam-grand-sparkles.css?v=2">
-<script src="/static/tam-grand-sparkles.js?v=2"
+<script src="/static/tam-grand-sparkles.js?v=3"
         defer></script>
 
 
@@ -373,8 +373,40 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 <link rel="stylesheet"
       href="/static/tam-back-buttons.css?v=2">
 
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<link rel="stylesheet" href="/static/css/tam-site-logo.css">
+
+
+<!-- TAM-LOGO-BACK-CLEARANCE-V1 -->
+<script src="/static/tam-logo-back-clearance.js?v=1" defer></script>
 </head>
 <body>
+
+
+
+<!-- TAM-BIG-BACKGROUND-WATERMARK-V1 -->
+<div class="tam-background-watermark tam-watermark-left"
+     aria-hidden="true"></div>
+<div class="tam-background-watermark tam-watermark-right"
+     aria-hidden="true"></div>
+
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<a
+    class="tam-site-logo"
+    href="/events/tam-diwali-2026"
+    aria-label="TAM Event Home"
+    title="Return to TAM Event Home"
+>
+    <img
+        src="/static/icons/tam-icon-512.png"
+        alt="Telugu Association of Montreal"
+        width="70"
+        height="70"
+    >
+</a>
+
     <div class="container">
         <a class="tam-back-dashboard" href="/events/tam-diwali-2026"
         style="display: block;
@@ -403,6 +435,19 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
            capture="environment" hidden>
     <button id="openCamera" type="button" disabled>📸 Capture a Memory ✨</button>
     <button id="retryPhoto" type="button" hidden>Retry Upload</button>
+</div>
+
+
+<div style="margin:15px 0; text-align:left;">
+    <label style="display:flex; gap:10px; align-items:flex-start;">
+        <input type="checkbox" id="demoFaceIndex"
+               style="width:auto; margin-top:4px;">
+        <span>
+            Include in facial-recognition demo.
+            I confirm everyone pictured has agreed
+            to participate.
+        </span>
+    </label>
 </div>
 
 <p id="uploadStatus" role="status">
@@ -480,6 +525,11 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 
         const formData = new FormData();
         formData.append("file", pendingPhoto, pendingPhoto.name || "event-photo.jpg");
+        formData.append(
+            "demo_face_index",
+            document.getElementById("demoFaceIndex").checked
+                ? "yes" : "no"
+        );
 
         try {
             const response = await fetch("/upload", {

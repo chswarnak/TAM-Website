@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>TAM Gallery Management</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #faf7ff;
+            color: #30213f;
+        }
+
+        header {
+            background: #512878;
+            color: white;
+            padding: 22px;
+            text-align: center;
+        }
+
+        main {
+            max-width: 1200px;
+            margin: 28px auto;
+            padding: 0 20px;
+        }
+
+        .navigation {
+            margin-bottom: 24px;
+        }
+
+        .navigation a {
+            color: #512878;
+            font-weight: bold;
+            text-decoration: none;
+        }
+
+        .panel {
+            background: white;
+            border: 1px solid #e6daef;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 22px;
+            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.04);
+        }
+
+        h2 {
+            margin-top: 0;
+            color: #512878;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+        }
+
+        .status-card {
+            background: #f5effb;
+            border-radius: 9px;
+            padding: 18px;
+        }
+
+        .status-card strong {
+            display: block;
+            margin-bottom: 9px;
+            font-size: 14px;
+        }
+
+        .status-card span {
+            font-size: 22px;
+            font-weight: bold;
+        }
+
+        .notice {
+            background: #fff8e6;
+            border-left: 4px solid #d8a43e;
+            padding: 14px;
+            line-height: 1.6;
+        }
+
+        .photo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 18px;
+            margin-top: 20px;
+        }
+
+        .photo-card {
+            border: 1px solid #e6daef;
+            border-radius: 10px;
+            padding: 12px;
+            background: #fff;
+        }
+
+        .photo-card img {
+            width: 100%;
+            height: 170px;
+            object-fit: cover;
+            border-radius: 7px;
+        }
+
+        button {
+            border: 0;
+            border-radius: 7px;
+            padding: 11px 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+
+        .approve {
+            background: #237a48;
+            color: white;
+        }
+
+        .revoke {
+            background: #a52d3b;
+            color: white;
+        }
+
+        .primary {
+            background: #512878;
+            color: white;
+        }
+
+        .muted {
+            color: #756985;
+        }
+    </style>
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<link rel="stylesheet" href="/static/css/tam-site-logo.css">
+
+
+<!-- TAM-GLOBAL-APPROVAL-V1 -->
+<link rel="stylesheet" href="/static/css/tam-global-approval.css">
+<script src="/static/tam-global-approval.js" defer></script>
+
+<!-- TAM-LOGO-BACK-CLEARANCE-V1 -->
+<script src="/static/tam-logo-back-clearance.js?v=1" defer></script>
+</head>
+
+<body>
+
+
+
+<!-- TAM-BIG-BACKGROUND-WATERMARK-V1 -->
+<div class="tam-background-watermark tam-watermark-left"
+     aria-hidden="true"></div>
+<div class="tam-background-watermark tam-watermark-right"
+     aria-hidden="true"></div>
+
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<a
+    class="tam-site-logo"
+    href="/events/tam-diwali-2026"
+    aria-label="TAM Event Home"
+    title="Return to TAM Event Home"
+>
+    <img
+        src="/static/icons/tam-icon-512.png"
+        alt="Telugu Association of Montreal"
+        width="70"
+        height="70"
+    >
+</a>
+
+
+<header>
+    <h1>TAM Gallery Management</h1>
+    <p>Diwali 2026 — Super Admin</p>
+</header>
+
+<main>
+
+    <!-- TAM-GALLERY-CSRF-V1 -->
+    <input
+        type="hidden"
+        id="galleryCsrfToken"
+        value="{{ csrf_token | e }}"
+    >
+
+
+    <div class="navigation">
+        <a href="/admin/dashboard">
+            ← Back to Organizer Dashboard
+        </a>
+    </div>
+
+{% if admin_role == "super_admin" %}
+    <section class="panel">
+        <h2>Gallery Status</h2>
+
+        <div class="status-grid">
+            <div class="status-card">
+                <strong>Gallery</strong>
+                <span id="galleryStatus">Not loaded</span>
+            </div>
+
+            <div class="status-card">
+                <strong>Total Photographs</strong>
+                <span id="totalPhotos">—</span>
+            </div>
+
+            <div class="status-card">
+                <strong>Approved Photographs</strong>
+                <span id="approvedPhotos">—</span>
+            </div>
+
+            <div class="status-card">
+                <strong>Access Code</strong>
+                <span id="accessCodeStatus">Not loaded</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>Gallery Controls</h2>
+
+        <p class="notice">
+            Gallery activation requires a configured access code.
+            Enabling the gallery does not automatically approve
+            photographs.
+        </p>
+
+        <button class="primary" disabled>
+            Enable Gallery
+        </button>
+
+        <button class="revoke" disabled>
+            Disable Gallery
+        </button>
+
+        <button class="primary" disabled>
+            Configure Access Code
+        </button>
+
+        <p class="muted">
+            Controls will be connected after the interface is verified.
+        </p>
+    </section>
+
+{% endif %}
+    <section class="panel">
+        <h2>Review Photographs</h2>
+
+        <p>
+            Review photographs before making them available
+            in the event gallery.
+        </p>
+
+        <div id="photoGrid" class="photo-grid">
+            <p class="muted">
+                Photograph review will be connected in the next step.
+            </p>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>Privacy and Facial Recognition</h2>
+
+        <p class="notice">
+            Approving a photograph for gallery browsing does not
+            authorize facial recognition or AWS Rekognition indexing.
+            Facial-indexing authorization is managed separately.
+        </p>
+    </section>
+
+</main>
+
+
+<!-- TAM-GALLERY-LIVE-STATUS-V1 -->
+<script>
+"use strict";
+
+async function loadGalleryStatus() {
+    const galleryStatus = document.getElementById("galleryStatus");
+    const totalPhotos = document.getElementById("totalPhotos");
+    const approvedPhotos = document.getElementById("approvedPhotos");
+    const accessCodeStatus = document.getElementById("accessCodeStatus");
+
+    try {
+        const response = await fetch("/admin/gallery/status", {
+            method: "GET",
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: {
+                "Accept": "application/json"
+            }
+        });
+
+        if (response.status === 401 || response.status === 403) {
+            galleryStatus.textContent = "Login required";
+            totalPhotos.textContent = "—";
+            approvedPhotos.textContent = "—";
+            accessCodeStatus.textContent = "—";
+            return;
+        }
+
+        if (!response.ok) {
+            throw new Error("Gallery status request failed");
+        }
+
+        const data = await response.json();
+
+        galleryStatus.textContent =
+            data.gallery_enabled ? "Enabled" : "Disabled";
+
+        totalPhotos.textContent =
+            Number(data.total_photos || 0).toLocaleString();
+
+        approvedPhotos.textContent =
+            Number(data.approved_photos || 0).toLocaleString();
+
+        accessCodeStatus.textContent =
+            data.access_code_configured
+                ? "Configured"
+                : "Not configured";
+
+    } catch (error) {
+        console.error("Unable to load gallery status.");
+
+        galleryStatus.textContent = "Unavailable";
+        totalPhotos.textContent = "—";
+        approvedPhotos.textContent = "—";
+        accessCodeStatus.textContent = "—";
+    }
+}
+
+document.addEventListener("DOMContentLoaded", loadGalleryStatus);
+</script>
+
+
+<!-- TAM-GALLERY-PHOTO-REVIEW-V1 -->
+<script>
+"use strict";
+
+let galleryReviewPage = 1;
+let galleryReviewTotalPages = 1;
+
+function makeGalleryText(tag, text, className = "") {
+    const element = document.createElement(tag);
+    element.textContent = String(text ?? "");
+
+    if (className) {
+        element.className = className;
+    }
+
+    return element;
+}
+
+async function loadGalleryReview(page = 1) {
+    const grid = document.getElementById("photoGrid");
+
+    if (!grid) {
+        return;
+    }
+
+    grid.replaceChildren(
+        makeGalleryText("p", "Loading photographs...", "muted")
+    );
+
+    try {
+        const response = await fetch(
+            "/admin/gallery/photos?page=" +
+            encodeURIComponent(page),
+            {
+                method: "GET",
+                credentials: "same-origin",
+                cache: "no-store",
+                headers: {
+                    "Accept": "application/json"
+                }
+            }
+        );
+
+        if (response.status === 401 || response.status === 403) {
+            grid.replaceChildren(
+                makeGalleryText(
+                    "p",
+                    "Super Admin authentication required."
+                )
+            );
+            return;
+        }
+
+        if (!response.ok) {
+            throw new Error(
+                "Photo review request failed: HTTP " +
+                response.status
+            );
+        }
+
+        const data = await response.json();
+
+        galleryReviewPage = data.page;
+        galleryReviewTotalPages = data.total_pages;
+
+        grid.replaceChildren();
+
+        if (!data.photos || data.photos.length === 0) {
+            grid.appendChild(
+                makeGalleryText(
+                    "p",
+                    "No photographs found.",
+                    "muted"
+                )
+            );
+        } else {
+            for (const photo of data.photos) {
+                const card = document.createElement("article");
+                card.className = "photo-card";
+
+                const image = document.createElement("img");
+
+                image.src =
+                    "/admin/gallery/photos/" +
+                    encodeURIComponent(photo.id) +
+                    "/thumbnail";
+
+                image.alt =
+                    "Event photograph " + photo.id;
+
+                image.loading = "lazy";
+
+                image.onerror = function () {
+                    image.style.display = "none";
+                    card.appendChild(
+                        makeGalleryText(
+                            "p",
+                            "Thumbnail unavailable",
+                            "muted"
+                        )
+                    );
+                };
+
+                card.appendChild(image);
+
+                card.appendChild(
+                    makeGalleryText(
+                        "p",
+                        "Photo ID: " + photo.id
+                    )
+                );
+
+                card.appendChild(
+                    makeGalleryText(
+                        "p",
+                        "Contributor: " +
+                        (photo.contributor_name || "Unknown")
+                    )
+                );
+
+                card.appendChild(
+                    makeGalleryText(
+                        "p",
+                        "Uploaded: " +
+                        (photo.uploaded_at || "Unknown")
+                    )
+                );
+
+                card.appendChild(
+                    makeGalleryText(
+                        "p",
+                        "Status: " +
+                        (photo.status || "Unknown")
+                    )
+                );
+
+                // TAM-ADMIN-PHOTO-DELETE-BUTTON-V1
+                if (photo.status === "available") {
+                    const deleteButton = document.createElement("button");
+                    deleteButton.type = "button";
+                    deleteButton.textContent = "🗑️ Delete Photo";
+                    deleteButton.className = "revoke";
+                    deleteButton.style.background = "#b42318";
+                    deleteButton.style.marginTop = "10px";
+
+                    deleteButton.addEventListener("click", async function () {
+                        const photoId = Number(photo.id);
+
+                        if (!Number.isSafeInteger(photoId) || photoId <= 0) {
+                            alert("Invalid photograph ID.");
+                            return;
+                        }
+
+                        const confirmed = window.confirm(
+                            "Delete Photo #" + photoId + "?\n\n" +
+                            "This photo will immediately disappear from the " +
+                            "gallery and selfie-search results.\n\n" +
+                            "The original will remain in private storage."
+                        );
+
+                        if (!confirmed) return;
+
+                        const tokenField =
+                            document.getElementById("galleryCsrfToken");
+
+                        if (!tokenField || !tokenField.value) {
+                            alert("Security token missing. Reload this page.");
+                            return;
+                        }
+
+                        deleteButton.disabled = true;
+
+                        try {
+                            const body = new URLSearchParams();
+                            body.set("csrf_token", tokenField.value);
+                            body.set("confirmation", "DELETE");
+
+                            const response = await fetch(
+                                "/admin/gallery/photos/" +
+                                encodeURIComponent(photoId) +
+                                "/delete",
+                                {
+                                    method: "POST",
+                                    credentials: "same-origin",
+                                    headers: {
+                                        "Content-Type": "application/x-www-form-urlencoded"
+                                    },
+                                    body: body.toString()
+                                }
+                            );
+
+                            const result = await response.json()
+                                .catch(() => ({}));
+
+                            if (!response.ok) {
+                                throw new Error(
+                                    result.detail ||
+                                    "Delete failed (HTTP " + response.status + ")."
+                                );
+                            }
+
+                            alert(
+                                "Photo #" + photoId +
+                                " has been removed successfully."
+                            );
+
+                            await loadGalleryReview(galleryReviewPage);
+
+                        } catch (error) {
+                            alert(
+                                error.message ||
+                                "Unable to delete photograph."
+                            );
+                        } finally {
+                            deleteButton.disabled = false;
+                        }
+                    });
+
+                    card.appendChild(deleteButton);
+                }
+
+                grid.appendChild(card);
+            }
+        }
+
+        updateGalleryReviewNavigation();
+
+    } catch (error) {
+        console.error("Gallery review request failed.");
+
+        grid.replaceChildren(
+            makeGalleryText(
+                "p",
+                "Unable to load photographs. Please try again."
+            )
+        );
+    }
+}
+
+
+// TAM Gallery Management - individual approval actions
+async function changeGalleryPhotoApproval(
+    photoId,
+    currentlyApproved,
+    button
+) {
+    "use strict";
+
+    const tokenField =
+        document.getElementById("galleryCsrfToken");
+
+    if (!tokenField || !tokenField.value) {
+        alert(
+            "Security token missing. Please reload the page."
+        );
+        return;
+    }
+
+    const id = Number(photoId);
+
+    if (!Number.isSafeInteger(id) || id <= 0) {
+        alert("Invalid photograph ID.");
+        return;
+    }
+
+    const action = currentlyApproved
+        ? "revoke"
+        : "approve";
+
+    const confirmation = currentlyApproved
+        ? "REVOKE"
+        : "APPROVE";
+
+    const message = currentlyApproved
+        ? "Revoke gallery approval for photograph #" +
+          id + "?"
+        : "Approve photograph #" + id +
+          " for event gallery browsing?";
+
+    if (!window.confirm(message)) {
+        return;
+    }
+
+    button.disabled = true;
+
+    try {
+        const form = new URLSearchParams();
+
+        form.set(
+            "csrf_token",
+            tokenField.value
+        );
+
+        form.set(
+            "confirmation",
+            confirmation
+        );
+
+        const response = await fetch(
+            "/admin/gallery/photos/" +
+            encodeURIComponent(id) +
+            "/" + action,
+            {
+                method: "POST",
+                credentials: "same-origin",
+                cache: "no-store",
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded",
+                    "Accept": "application/json"
+                },
+                body: form.toString()
+            }
+        );
+
+        if (response.status === 401 ||
+            response.status === 403) {
+            alert(
+                "Your administrator session or security " +
+                "token is invalid or expired. " +
+                "Please log in again."
+            );
+            return;
+        }
+
+        if (!response.ok) {
+            throw new Error(
+                "Approval request failed: HTTP " +
+                response.status
+            );
+        }
+
+        const result = await response.json();
+
+        if (result.success !== true ||
+            result.photo_id !== id ||
+            result.gallery_approved === currentlyApproved) {
+            throw new Error(
+                "Unexpected approval response"
+            );
+        }
+
+        await Promise.all([
+            loadGalleryReview(galleryReviewPage),
+            loadGalleryStatus()
+        ]);
+
+    } catch (error) {
+        console.error(
+            "Gallery photo approval request failed."
+        );
+
+        alert(
+            "The action could not be confirmed. " +
+            "Please refresh the page and check " +
+            "the photograph's current approval status."
+        );
+
+    } finally {
+        button.disabled = false;
+    }
+}
+
+function updateGalleryReviewNavigation() {
+    const previous = document.getElementById(
+        "galleryPreviousPage"
+    );
+
+    const next = document.getElementById(
+        "galleryNextPage"
+    );
+
+    const indicator = document.getElementById(
+        "galleryPageIndicator"
+    );
+
+    if (!previous || !next || !indicator) {
+        return;
+    }
+
+    previous.disabled = galleryReviewPage <= 1;
+
+    next.disabled =
+        galleryReviewPage >= galleryReviewTotalPages;
+
+    indicator.textContent =
+        "Page " + galleryReviewPage +
+        " of " + Math.max(galleryReviewTotalPages, 1);
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+    const grid = document.getElementById("photoGrid");
+
+    const navigation = document.createElement("div");
+
+    navigation.style.marginTop = "20px";
+    navigation.style.display = "flex";
+    navigation.style.alignItems = "center";
+    navigation.style.gap = "15px";
+    navigation.style.flexWrap = "wrap";
+
+    const previous = document.createElement("button");
+    previous.id = "galleryPreviousPage";
+    previous.textContent = "← Previous";
+    previous.className = "primary";
+    previous.type = "button";
+
+    const indicator = document.createElement("span");
+    indicator.id = "galleryPageIndicator";
+
+    const next = document.createElement("button");
+    next.id = "galleryNextPage";
+    next.textContent = "Next →";
+    next.className = "primary";
+    next.type = "button";
+
+    previous.addEventListener("click", function () {
+        if (galleryReviewPage > 1) {
+            loadGalleryReview(galleryReviewPage - 1);
+        }
+    });
+
+    next.addEventListener("click", function () {
+        if (galleryReviewPage < galleryReviewTotalPages) {
+            loadGalleryReview(galleryReviewPage + 1);
+        }
+    });
+
+    navigation.append(previous, indicator, next);
+
+    if (grid) {
+        grid.insertAdjacentElement("afterend", navigation);
+        loadGalleryReview(1);
+    }
+});
+</script>
+
+</body>
+</html>

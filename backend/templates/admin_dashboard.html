@@ -172,9 +172,42 @@
 
 <!-- TAM-PWA-REGISTRATION-V1 -->
 <script src="/static/tam-pwa-register.js" defer></script>
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<link rel="stylesheet" href="/static/css/tam-site-logo.css">
+
+
+<!-- TAM-GLOBAL-APPROVAL-V1 -->
+<link rel="stylesheet" href="/static/css/tam-global-approval.css">
+<script src="/static/tam-global-approval.js" defer></script>
 </head>
 
 <body>
+
+
+
+<!-- TAM-BIG-BACKGROUND-WATERMARK-V1 -->
+<div class="tam-background-watermark tam-watermark-left"
+     aria-hidden="true"></div>
+<div class="tam-background-watermark tam-watermark-right"
+     aria-hidden="true"></div>
+
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<a
+    class="tam-site-logo"
+    href="/events/tam-diwali-2026"
+    aria-label="TAM Event Home"
+    title="Return to TAM Event Home"
+>
+    <img
+        src="/static/icons/tam-icon-512.png"
+        alt="Telugu Association of Montreal"
+        width="70"
+        height="70"
+    >
+</a>
+
     <div class="container tam-exact-border tam-admin-festival">
         <h1>TAM Organizer Dashboard</h1>
 
@@ -196,10 +229,17 @@
                 </a>
 
                 <!-- TAM-FACIAL-INDEXING-NAV-V1 -->
-                <a href="/admin/facial-indexing">
+
+
+<a href="/admin/facial-indexing">
                     🔐 Facial Indexing Review
                 </a>
             {% endif %}
+
+            <!-- TAM-ALL-ADMIN-PHOTO-MANAGEMENT-V1 -->
+            <a href="/admin/gallery/manage">
+                🗑️ Manage & Delete Photos
+            </a>
 
             <a href="/admin/contributors/manage">
                 Manage Contributors
@@ -265,8 +305,8 @@
                     <td>{{ contributor.id }}</td>
                     <td>{{ contributor.name }}</td>
                     <td>{{ contributor.mobile }}</td>
-                    <td class="{{ 'approved' if contributor.approved else '' }}">
-                        {{ 'Approved' if contributor.approved else 'Pending' }}
+                    <td class="{{ 'approved' if contributor.status == 'Active' else '' }}">
+                        {{ contributor.status }}
                     </td>
                 </tr>
                 {% else %}
@@ -280,110 +320,7 @@
         </table>
     </div>
 
-<!-- TAM-ADMIN-APPROVAL-POPUP-V1 -->
-<div id="tamApprovalPopup" role="alertdialog"
-     aria-labelledby="tamApprovalTitle"
-     aria-modal="true"
-     style="display:none; position:fixed; inset:0;
-            background:rgba(0,0,0,.55); z-index:9999;
-            align-items:center; justify-content:center; padding:20px;">
-  <div style="background:#fffaf0; border:2px solid #b8860b;
-              border-radius:16px; padding:25px; width:100%;
-              max-width:400px; text-align:center;
-              box-shadow:0 8px 30px rgba(0,0,0,.25);">
-    <h2 id="tamApprovalTitle" style="color:#7b2d26;">
-      🔔 New Contributor Request
-    </h2>
-    <p id="tamApprovalMessage"></p>
-    <a href="/admin/contributors/manage"
-       style="display:inline-block; padding:10px 18px;
-              background:#8b3a3a; color:white; border-radius:8px;
-              text-decoration:none; margin:5px;">
-       Review Request
-    </a>
-    <button type="button" id="tamDismissApproval"
-            style="padding:10px 18px; border-radius:8px;
-                   border:1px solid #8b3a3a; cursor:pointer;">
-      Dismiss
-    </button>
-  </div>
-</div>
 
-<script>
-(() => {
-    const popup = document.getElementById("tamApprovalPopup");
-    const message = document.getElementById("tamApprovalMessage");
-    const dismiss = document.getElementById("tamDismissApproval");
-
-    // TAM-ADMIN-NOTIFICATION-SESSION-V1
-    const adminId = {{ admin_id | tojson }};
-    const storageKey =
-        "tam-admin-seen-contributor-requests-" + adminId;
-    let seen = new Set();
-
-    try {
-        seen = new Set(JSON.parse(
-            sessionStorage.getItem(storageKey) || "[]"
-        ));
-    } catch (_) {}
-
-    dismiss.addEventListener("click", () => {
-        popup.style.display = "none";
-    });
-
-    async function checkPendingContributors() {
-        if (popup.style.display === "flex") return;
-
-        try {
-            const response = await fetch(
-                "/admin/notifications/pending-contributors",
-                { credentials: "same-origin", cache: "no-store" }
-            );
-
-            if (response.status === 401 || response.status === 403) {
-                clearInterval(notificationTimer);
-                return;
-            }
-
-            if (!response.ok) return;
-
-            const data = await response.json();
-            const contributors = data.contributors || [];
-
-            const newRequests = contributors.filter(
-                person => !seen.has(person.id)
-            );
-
-            if (!newRequests.length) return;
-
-            for (const person of newRequests) {
-                seen.add(person.id);
-            }
-
-            try {
-                sessionStorage.setItem(
-                    storageKey, JSON.stringify([...seen])
-                );
-            } catch (_) {}
-
-            message.textContent =
-                newRequests.length === 1
-                ? newRequests[0].name + " is waiting for approval."
-                : newRequests.length + " contributors are waiting for approval.";
-
-            popup.style.display = "flex";
-
-        } catch (error) {
-            console.error("Contributor notification check failed.");
-        }
-    }
-
-    const notificationTimer =
-        setInterval(checkPendingContributors, 10000);
-
-    checkPendingContributors();
-})();
-</script>
 
 
 <!-- TAM-PUSH-ADMIN-BUTTON-V1 -->

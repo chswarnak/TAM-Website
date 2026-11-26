@@ -92,7 +92,7 @@
             }
         }
 
-    
+
 </style>
 
 <!-- TAM-THEME-BEGIN -->
@@ -241,7 +241,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 <!-- TAM-GRAND-SPARKLES-V1 -->
 <link rel="stylesheet"
       href="/static/tam-grand-sparkles.css?v=2">
-<script src="/static/tam-grand-sparkles.js?v=2"
+<script src="/static/tam-grand-sparkles.js?v=3"
         defer></script>
 
 
@@ -249,9 +249,55 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 <link rel="stylesheet"
       href="/static/tam-back-buttons.css?v=2">
 
+
+<!-- TAM-SELFIE-MIRROR-V1 -->
+<style>
+/*
+ * Mirror the live front-camera preview.
+ * The canvas capture and Rekognition image remain unchanged.
+ */
+#faceCamera {
+    transform: scaleX(-1) !important;
+    -webkit-transform: scaleX(-1) !important;
+    transform-origin: center center;
+}
+</style>
+
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<link rel="stylesheet" href="/static/css/tam-site-logo.css">
+
+
+<!-- TAM-LOGO-BACK-CLEARANCE-V1 -->
+<script src="/static/tam-logo-back-clearance.js?v=1" defer></script>
 </head>
 
 <body>
+
+
+
+<!-- TAM-BIG-BACKGROUND-WATERMARK-V1 -->
+<div class="tam-background-watermark tam-watermark-left"
+     aria-hidden="true"></div>
+<div class="tam-background-watermark tam-watermark-right"
+     aria-hidden="true"></div>
+
+
+<!-- TAM-GLOBAL-CLICKABLE-LOGO-V1 -->
+<a
+    class="tam-site-logo"
+    href="/events/tam-diwali-2026"
+    aria-label="TAM Event Home"
+    title="Return to TAM Event Home"
+>
+    <img
+        src="/static/icons/tam-icon-512.png"
+        alt="Telugu Association of Montreal"
+        width="70"
+        height="70"
+    >
+</a>
+
     <main class="container tam-exact-border">
 
         <a class="tam-back-dashboard" href="/events/tam-diwali-2026"
@@ -265,6 +311,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             ← Back to TAM Event Dashboard
         </a>
 
+        <div id="selfieIntro">
         <h1>Find My Photos</h1>
 
         <p class="description">
@@ -281,7 +328,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
                 Your face scan will be processed only
                 with your consent.
             </p>
-        </div>        
+        </div>
 
         <p>
             <a id="consentFormLink" href="/attendee-consent"
@@ -299,9 +346,10 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             </button>
         </p>
 
+        </div>
         <p id="message" role="status"></p>
 
-        
+
         <div id="cameraSection" style="display:none; margin-top:20px;">
 
             <div style="position:relative; width:100%;
@@ -331,7 +379,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 
             <button id="captureSelfie" type="button">
                 Capture Selfie
-            </button>            
+            </button>
             <button id="stopFaceCamera"
                     type="button"
                     style="margin-top: 12px;">
@@ -386,12 +434,23 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 
     </main>
 
-    
+
         <script>
             // Consent is verified by FastAPI using the
             // temporary HttpOnly guest consent cookie.
             // The browser cannot read the cookie directly.
+
+            // TAM-SELFIE-SEPARATE-CAMERA-PAGE-V1
+            const selfieCameraPage =
+                new URLSearchParams(window.location.search)
+                    .get("camera") === "1";
+
+            if (selfieCameraPage) {
+                document.getElementById("selfieIntro").style.display = "none";
+            }
+
             let consentVerified = false;
+
 
 
 async function checkGuestConsent() {
@@ -427,6 +486,10 @@ async function checkGuestConsent() {
             findButton.disabled = false;
             message.textContent =
                 "Consent verified. You can now take your selfie.";
+
+            if (selfieCameraPage) {
+                findButton.click();
+            }
         } else {
             message.textContent =
                 "Please complete the TAM Consent Form first.";
@@ -518,10 +581,16 @@ async function checkGuestConsent() {
                 searchSelfie.disabled = true;
                 searchResults.textContent = "";
 
-            }         
-            
+            }
+
 
             findButton.addEventListener("click", async () => {
+                if (!selfieCameraPage) {
+                    if (consentVerified) {
+                        window.location.assign("/find-my-photos?camera=1");
+                    }
+                    return;
+                }
                 if (!consentVerified) {
                     message.textContent = "Please complete the TAM Consent Form first.";
                     return;
@@ -622,7 +691,7 @@ async function checkGuestConsent() {
                     faceCamera, 0, 0,
                     canvas.width, canvas.height
                 );
-                
+
                 // Play a short camera shutter sound.
                 playShutterSound();
 
@@ -652,7 +721,7 @@ async function checkGuestConsent() {
 
                         selfieStatus.textContent =
                             "Selfie captured successfully!";
-                        
+
                         message.textContent =
                             "Selfie ready. Click Search My Photos to find your pictures.";
 
@@ -670,6 +739,9 @@ async function checkGuestConsent() {
                 stopCamera();
                 findButton.disabled = !consentVerified;
                 message.textContent = "Camera cancelled.";
+                if (selfieCameraPage) {
+                    window.location.assign("/find-my-photos");
+                }
             });
 
             retakeSelfie.addEventListener("click", () => {
@@ -679,6 +751,9 @@ async function checkGuestConsent() {
                     findButton.disabled = false;
                     message.textContent =
                         "Click Find My Photos to retake your selfie.";
+                    if (selfieCameraPage) {
+                        findButton.click();
+                    }
                 }
             });
 
@@ -807,6 +882,14 @@ async function checkGuestConsent() {
 
 
         </script>
+
+
+<!-- TAM-MOBILE-SWIPE-BACK-V1 -->
+<script
+    src="/static/tam-swipe-back.js?v=1"
+    data-tam-swipe-back="/events/tam-diwali-2026"
+    defer>
+</script>
 
 </body>
 </html>

@@ -32,8 +32,12 @@ def create_super_admin():
             print("Passwords do not match.")
             return
 
-        if len(password) < 12:
-            print("Password must be at least 12 characters.")
+        from admin_password_policy import validate_admin_password
+
+        try:
+            validate_admin_password(password)
+        except ValueError as error:
+            print(str(error))
             return
 
         password_hash = hasher.hash(password)
