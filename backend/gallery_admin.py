@@ -153,7 +153,7 @@ def gallery_admin_status(request: Request):
         event = connection.execute(
             """
             SELECT gallery_enabled,
-                   gallery_access_code_hash
+                   gallery_access_code_hash, gallery_code_required
             FROM events
             WHERE event_id = ?
             """,
@@ -189,6 +189,7 @@ def gallery_admin_status(request: Request):
         "event_id": event_id,
         "gallery_enabled": bool(event[0]),
         "access_code_configured": bool(event[1]),
+        "gallery_code_required": bool(event[2]),
         "approved_photos": approved,
         "total_photos": total,
     }
@@ -284,7 +285,7 @@ def set_gallery_access_code(
     except ValueError:
         raise HTTPException(
             status_code=422,
-            detail="Access code must contain 12–128 characters",
+            detail="Access code must contain 4–128 characters",
         )
 
     event_id = "tam-diwali-2026"
@@ -305,6 +306,7 @@ def set_gallery_access_code(
                 detail="Event not found",
             )
 
+        connection.execute("UPDATE gallery_guest_sessions SET expires_at = 0 WHERE event_id = ?", (event_id,))
         connection.commit()
 
     return JSONResponse(
@@ -375,7 +377,7 @@ def enable_event_gallery(
 
         event = connection.execute(
             """
-            SELECT gallery_access_code_hash
+            SELECT gallery_access_code_hash, gallery_code_required
             FROM events
             WHERE event_id = ?
             """,
@@ -388,7 +390,7 @@ def enable_event_gallery(
                 detail="Event not found",
             )
 
-        if not is_valid_gallery_access_code_hash(event[0]):
+        if event[1] and not is_valid_gallery_access_code_hash(event[0]):
             raise HTTPException(
                 status_code=409,
                 detail=(
@@ -1081,4 +1083,147 @@ def delete_gallery_photo(
             "deleted": True,
         },
         headers={"Cache-Control": "no-store"},
+    )
+
+
+# TAM-ADMIN-PERMANENT-DELETE-V1
+
+@router.post(
+    "/admin/gallery/photos/{photo_id}/permanent-delete"
+)
+def permanently_delete_gallery_photo(
+    photo_id: int,
+    request: Request,
+    csrf_token: str = __import__("fastapi").Form(...),
+    confirmation: str = __import__("fastapi").Form(...),
+):
+    """
+    Permanently delete a selected event photograph.
+
+    Admin and Super Admin only.
+
+    Uses the shared photo deletion service.
+
+    Initially disabled until disposable-photo
+    testing has been completed.
+    """
+
+    import os
+    from fastapi.responses import JSONResponse
+
+    from photo_deletion_service import (
+        begin_photo_deletion,
+        process_photo_deletion,
+        PhotoDeletionError,
+    )
+
+    # Preserve existing Admin authentication.
+    admin_id = require_gallery_photo_admin(
+        request,
+        DB_PATH,
+    )
+
+    # Preserve CSRF protection.
+    verify_gallery_admin_csrf(
+        request,
+        admin_id,
+        csrf_token,
+    )
+
+    # Require explicit confirmation.
+    if confirmation != "DELETE":
+        raise HTTPException(
+            status_code=400,
+            detail="Explicit DELETE confirmation required",
+        )
+
+    if photo_id <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid photograph ID",
+        )
+
+    # Safe deployment switch.
+    # Disabled by default.
+    if os.getenv(
+        "TAM_PERMANENT_PHOTO_DELETE_ENABLED", "0"
+    ) != "1":
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Permanent photo deletion is not yet enabled"
+            ),
+        )
+
+    event_id = "tam-diwali-2026"
+
+    # Obtain AWS clients before changing the database.
+    from aws_config import get_tam_s3_client
+    from rekognition_service import (
+        get_tam_rekognition_client,
+    )
+
+    try:
+        s3_client = get_tam_s3_client()
+        rekognition_client = (
+            get_tam_rekognition_client()
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="AWS deletion services unavailable",
+        )
+
+    # Shared authorization and database reservation.
+    try:
+        begin_photo_deletion(
+            DB_PATH,
+            photo_id,
+            event_id,
+            "admin",
+            admin_id,
+            "Admin Gallery Management",
+        )
+
+    except PhotoDeletionError:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Photograph cannot be deleted. "
+                "Check permissions or deletion status."
+            ),
+        )
+
+    # Shared permanent-deletion processor.
+    try:
+        result = process_photo_deletion(
+            DB_PATH,
+            photo_id,
+            s3_client,
+            rekognition_client,
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Photo deletion is incomplete. "
+                "The photograph has been hidden, "
+                "and cleanup requires review."
+            ),
+        )
+
+    return JSONResponse(
+        {
+            "status": result["status"],
+            "message": (
+                "Photograph permanently deleted."
+            ),
+            "photo_id": photo_id,
+            "deleted": True,
+        },
+        headers={
+            "Cache-Control": "no-store"
+        },
     )

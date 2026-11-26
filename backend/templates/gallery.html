@@ -529,7 +529,189 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             download.href = `/api/gallery/photos/${id}/download`;
             download.textContent = "Download Photo";
 
+            // TAM-CONTRIBUTOR-DELETE-BUTTON-V1
+
             card.append(image, contributor, download);
+
+            // Delete is available only for photos owned by
+            // the authenticated Contributor.
+            if (
+                photo.can_delete === true &&
+                typeof window.tamPhotoDeleteCsrf === "string" &&
+                window.tamPhotoDeleteCsrf
+            ) {
+                const deleteButton = document.createElement("button");
+
+                deleteButton.type = "button";
+                deleteButton.className = "download-button";
+                deleteButton.textContent = "🗑️ Delete Photo";
+
+                deleteButton.style.marginTop = "8px";
+                deleteButton.style.backgroundColor = "#9b2424";
+                deleteButton.style.color = "#ffffff";
+                deleteButton.style.cursor = "pointer";
+
+                deleteButton.addEventListener("click", async () => {
+                    // TAM-DELETE-CONFIRMATION-V2
+                    if (deleteButton.disabled) return;
+
+                    deleteButton.disabled = true;
+
+                    const confirmation = await new Promise(resolve => {
+
+                        const dialog = document.createElement("dialog");
+
+                        dialog.style.cssText =
+                            "border:2px solid #c89b3c;" +
+                            "border-radius:20px;" +
+                            "padding:25px;" +
+                            "width:85%;" +
+                            "max-width:380px;" +
+                            "box-sizing:border-box;" +
+                            "background:#fffaf0;" +
+                            "color:#35143e;" +
+                            "text-align:center;" +
+                            "box-shadow:0 12px 45px #0005;";
+
+                        dialog.innerHTML = `
+                            <div style="font-size:42px;">&#128465;</div>
+
+                            <h2 style="color:#9b2424;">
+                                Delete Photograph?
+                            </h2>
+
+                            <p style="font-size:17px;line-height:1.5;">
+                                Are you sure you want to permanently
+                                delete this photograph?
+                            </p>
+
+                            <p style="color:#9b2424;font-size:14px;">
+                                This action cannot be undone.
+                            </p>
+
+                            <div style="
+                                display:flex;
+                                gap:12px;
+                                justify-content:center;
+                                margin-top:24px;
+                            ">
+
+                                <button type="button"
+                                    data-choice="no"
+                                    autofocus
+                                    style="
+                                        flex:1;
+                                        padding:14px;
+                                        background:#273d6b;
+                                        color:white;
+                                        border:0;
+                                        border-radius:10px;
+                                        font-size:16px;
+                                    ">
+                                    No, Cancel
+                                </button>
+
+                                <button type="button"
+                                    data-choice="yes"
+                                    style="
+                                        flex:1;
+                                        padding:14px;
+                                        background:#b32626;
+                                        color:white;
+                                        border:0;
+                                        border-radius:10px;
+                                        font-size:16px;
+                                    ">
+                                    Yes, Delete
+                                </button>
+
+                            </div>
+                        `;
+
+                        let finished = false;
+
+                        function finish(choice) {
+                            if (finished) return;
+                            finished = true;
+                            dialog.remove();
+                            resolve(choice);
+                        }
+
+                        dialog.querySelector(
+                            '[data-choice="no"]'
+                        ).onclick = () => finish(false);
+
+                        dialog.querySelector(
+                            '[data-choice="yes"]'
+                        ).onclick = () => finish(true);
+
+                        dialog.addEventListener("cancel", event => {
+                            event.preventDefault();
+                            finish(false);
+                        });
+
+                        document.body.appendChild(dialog);
+
+                        try {
+                            dialog.showModal();
+                        } catch (error) {
+                            finish(false);
+                        }
+                    });
+
+                    if (!confirmation) {
+                        deleteButton.disabled = false;
+                        return;
+                    }
+
+                    deleteButton.disabled = true;
+                    deleteButton.textContent = "Deleting...";
+
+                    try {
+                        const response = await fetch(
+                            `/api/gallery/photos/${id}/permanent-delete`,
+                            {
+                                method: "POST",
+                                credentials: "same-origin",
+                                cache: "no-store",
+                                headers: {
+                                    "X-TAM-Delete-CSRF":
+                                        window.tamPhotoDeleteCsrf,
+                                    "X-TAM-Delete-Confirmation": "DELETE"
+                                }
+                            }
+                        );
+
+                        if (!response.ok) {
+                            if (response.status === 503) {
+                                throw new Error(
+                                    "Permanent deletion is not yet " +
+                                    "enabled, or cleanup is incomplete."
+                                );
+                            }
+
+                            throw new Error(
+                                "Unable to delete this photograph."
+                            );
+                        }
+
+                        card.remove();
+
+                        status.textContent =
+                            "Photograph permanently deleted.";
+
+                    } catch (error) {
+                        window.alert(error.message);
+
+                    } finally {
+                        deleteButton.disabled = false;
+                        deleteButton.textContent = "🗑️ Delete Photo";
+                    }
+                });
+
+                card.appendChild(deleteButton);
+            }
+
             grid.appendChild(card);
         }
     }
@@ -575,6 +757,13 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             }
 
             const data = await response.json();
+
+            // Keep the Contributor deletion token in page memory.
+            // Attendees do not receive a deletion token.
+            window.tamPhotoDeleteCsrf =
+                typeof data.delete_csrf_token === "string"
+                    ? data.delete_csrf_token
+                    : null;
 
             if (!Array.isArray(data.photos)) {
                 throw new Error("Unexpected gallery response.");

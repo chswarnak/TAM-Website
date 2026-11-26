@@ -55,31 +55,12 @@ def require_push_admin(request: Request) -> int:
                 detail="Complete password setup first"
             )
 
-        if admin["role"] == "super_admin":
-            return admin_id
-
-        if admin["role"] != "admin":
+        # TAM-ALL-ACTIVE-ADMINS-PUSH-V1
+        # Match the global contributor-management role policy.
+        if admin["role"] not in ("super_admin", "admin"):
             raise HTTPException(
                 status_code=403,
                 detail="Administrator permission required"
-            )
-
-        permission = connection.execute(
-            """
-            SELECT can_approve_contributors
-            FROM organizer_permissions
-            WHERE admin_id = ?
-            """,
-            (admin_id,)
-        ).fetchone()
-
-        if (
-            permission is None
-            or not permission["can_approve_contributors"]
-        ):
-            raise HTTPException(
-                status_code=403,
-                detail="Contributor approval permission required"
             )
 
     return admin_id

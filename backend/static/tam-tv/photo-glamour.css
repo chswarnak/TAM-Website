@@ -1,0 +1,489 @@
+
+/* TAM Elegant Deepavali Photo Decoration */
+
+#tam-tv-stage .mode-slideshow.is-active,
+#tam-tv-stage .mode-wall.is-active {
+    background:
+        radial-gradient(
+            ellipse at center,
+            #431b3e 0%,
+            #29132f 55%,
+            #180b24 100%
+        ) !important;
+}
+
+/* Keep the original photograph bright. */
+
+#tam-tv-stage .slide-shade {
+    opacity: 0.08 !important;
+}
+
+#tam-tv-stage .slide-fill {
+    opacity: 0.22 !important;
+}
+
+/* Delicate golden photograph frame. */
+
+#tam-tv-stage .slide-img {
+    border-radius: 5px;
+    box-shadow:
+        0 0 0 1px #d4af3766,
+        0 0 18px #d4af3722;
+}
+
+#tam-tv-stage .tam-tv-photo {
+    border: 1px solid #cda653aa;
+    box-shadow: 0 0 12px #d4af371a;
+}
+
+/* Decorative outer border. */
+
+.tam-glamour {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 12;
+    pointer-events: none;
+}
+
+body:not(.tv-blank):has(
+    .mode-slideshow.is-active,
+    .mode-wall.is-active
+) .tam-glamour {
+    display: block;
+}
+
+.tam-glamour-border {
+    position: absolute;
+    inset: 1.4vh 0.8vw;
+    border: 1px solid #cba34f88;
+    border-radius: 16px;
+}
+
+/* Traditional corner ornaments. */
+
+.tam-glamour-corner {
+    position: absolute;
+    width: 65px;
+    height: 65px;
+    border-color: #e0b75e;
+    border-style: double;
+    border-width: 0;
+    opacity: 0.8;
+}
+
+.tam-glamour-corner.tl {
+    top: 12px;
+    left: 12px;
+    border-top-width: 5px;
+    border-left-width: 5px;
+    border-top-left-radius: 18px;
+}
+
+.tam-glamour-corner.tr {
+    top: 12px;
+    right: 12px;
+    border-top-width: 5px;
+    border-right-width: 5px;
+    border-top-right-radius: 18px;
+}
+
+.tam-glamour-corner.bl {
+    bottom: 12px;
+    left: 12px;
+    border-bottom-width: 5px;
+    border-left-width: 5px;
+    border-bottom-left-radius: 18px;
+}
+
+.tam-glamour-corner.br {
+    bottom: 12px;
+    right: 12px;
+    border-bottom-width: 5px;
+    border-right-width: 5px;
+    border-bottom-right-radius: 18px;
+}
+
+/* Small glowing diyas outside the main photo area. */
+
+.tam-glamour-diya {
+    position: absolute;
+    bottom: 2vh;
+    font-size: clamp(20px, 2vw, 42px);
+    animation: tam-glamour-glow 3s infinite alternate;
+}
+
+.tam-glamour-diya.left {
+    left: 2vw;
+}
+
+.tam-glamour-diya.right {
+    right: 2vw;
+}
+
+@keyframes tam-glamour-glow {
+    from {
+        filter: drop-shadow(0 0 4px #e7a52b);
+    }
+    to {
+        filter: drop-shadow(0 0 13px #ffd36a);
+    }
+}
+
+/* Subtle vertical golden decorations. */
+
+.tam-glamour-side {
+    position: absolute;
+    top: 25%;
+    bottom: 25%;
+    width: 1px;
+    background: linear-gradient(
+        transparent,
+        #cba34f88,
+        transparent
+    );
+}
+
+.tam-glamour-side.left {
+    left: 1.5vw;
+}
+
+.tam-glamour-side.right {
+    right: 1.5vw;
+}
+
+.tam-glamour-sparkle {
+    position: absolute;
+    color: #e9c36c;
+    font-size: 13px;
+    animation: tam-glamour-twinkle 5s infinite;
+}
+
+@keyframes tam-glamour-twinkle {
+    0%, 100% { opacity: 0.1; }
+    50% { opacity: 0.7; }
+}
+
+/* Refine the existing event heading. */
+
+#tam-tv-heading {
+    color: #ffe4a0 !important;
+    letter-spacing: 0.04em;
+    text-shadow: 0 0 12px #d4af3744;
+}
+
+/* Preserve intentional black screen. */
+
+body.tv-blank .tam-glamour {
+    display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tam-glamour-diya,
+    .tam-glamour-sparkle {
+        animation: none;
+    }
+}
+
+
+/* TAM-RICH-FESTIVAL-BACKGROUND-V2 */
+
+/* Rich ornamental background behind photographs. */
+
+#tam-tv-stage .mode-slideshow.is-active,
+#tam-tv-stage .mode-wall.is-active {
+
+    background:
+
+        radial-gradient(
+            circle at 12% 50%,
+            #ae702b33,
+            transparent 25%
+        ),
+
+        radial-gradient(
+            circle at 88% 50%,
+            #ae702b33,
+            transparent 25%
+        ),
+
+        repeating-linear-gradient(
+            45deg,
+            transparent 0px 24px,
+            #e4b85a09 24px 25px
+        ),
+
+        repeating-linear-gradient(
+            -45deg,
+            transparent 0px 24px,
+            #e4b85a09 24px 25px
+        ),
+
+        linear-gradient(
+            110deg,
+            #29102e,
+            #501b38,
+            #29102e
+        ) !important;
+}
+
+/* Large decorative mandalas. */
+
+#tam-tv-stage .mode-slideshow::before,
+#tam-tv-stage .mode-slideshow::after {
+
+    content: "";
+
+    position: absolute;
+
+    top: 50%;
+
+    width: min(26vw, 55vh);
+
+    aspect-ratio: 1;
+
+    border-radius: 50%;
+
+    transform: translateY(-50%);
+
+    background:
+
+        repeating-conic-gradient(
+            from 0deg,
+            transparent 0deg 8deg,
+            #e6bd6644 8deg 11deg,
+            transparent 11deg 19deg,
+            #e6bd6622 19deg 22deg
+        ),
+
+        repeating-radial-gradient(
+            circle,
+            transparent 0px 18px,
+            #dfb45a55 19px 20px,
+            transparent 21px 34px
+        );
+
+    border: 7px double #cda45a66;
+
+    box-shadow:
+        0 0 0 12px #d9ad4315,
+        0 0 40px #e5ba4422,
+        inset 0 0 30px #e5ba4422;
+
+    opacity: .75;
+
+    z-index: 0;
+
+    pointer-events: none;
+}
+
+#tam-tv-stage .mode-slideshow::before {
+
+    left: 1vw;
+}
+
+#tam-tv-stage .mode-slideshow::after {
+
+    right: 1vw;
+}
+
+/* Keep every photograph above the ornaments. */
+
+#tam-tv-stage .slide-layer {
+
+    z-index: 2;
+}
+
+/* Preserve the incoming slide's stacking priority. */
+
+#tam-tv-stage .slide-layer.is-active {
+
+    z-index: 3;
+}
+
+#tam-tv-stage .slide-box {
+
+    z-index: 4;
+}
+
+/* Reduce the blurred photograph background so the
+   festival ornaments remain visible. */
+
+#tam-tv-stage .slide-fill {
+
+    opacity: .10 !important;
+}
+
+/* Traditional ornamental outer frame. */
+
+.tam-glamour-border {
+
+    inset: 1.5vh 1vw;
+
+    border: 4px double #d5ae6188;
+
+    box-shadow:
+
+        0 0 18px #d4af3722,
+
+        inset 0 0 15px #d4af3715;
+}
+
+/* More prominent golden corner decorations. */
+
+.tam-glamour-corner {
+
+    width: clamp(65px, 7vw, 120px);
+
+    height: clamp(65px, 7vw, 120px);
+
+    opacity: .85;
+}
+
+/* Warm festival illumination at the lower corners. */
+
+.tam-glamour-diya {
+
+    font-size: clamp(28px, 3vw, 60px);
+
+    filter: drop-shadow(0 0 18px #ffc34a);
+}
+
+.tam-glamour-diya.left {
+
+    left: 2vw;
+}
+
+.tam-glamour-diya.right {
+
+    right: 2vw;
+}
+
+/* Refined hanging golden lamps. */
+
+.tam-glamour-corner.tl::after,
+.tam-glamour-corner.tr::after {
+
+    content: "🪔";
+
+    position: absolute;
+
+    top: 55px;
+
+    font-size: clamp(20px, 2.5vw, 42px);
+
+    filter: drop-shadow(0 0 15px #ffcb65);
+
+    animation:
+        tam-glamour-glow 3s infinite alternate;
+}
+
+.tam-glamour-corner.tl::after {
+
+    left: 12px;
+}
+
+.tam-glamour-corner.tr::after {
+
+    right: 12px;
+}
+
+/* Keep the photo wall clean. */
+
+body:has(.mode-wall.is-active)
+.tam-glamour-corner::after {
+
+    display: none;
+}
+
+/* Preserve the intentional black screen. */
+
+body.tv-blank .tam-glamour {
+
+    display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .tam-glamour-corner::after {
+
+        animation: none !important;
+    }
+}
+
+
+
+/* TAM-FIREWORKS-BACKGROUND-V3 */
+
+/* Remove the previous wheel-like patterns. */
+
+#tam-tv-stage .mode-slideshow::before,
+#tam-tv-stage .mode-slideshow::after {
+    content: none !important;
+    display: none !important;
+}
+
+/* Deepavali fireworks behind the photographs. */
+
+#tam-tv-stage .mode-slideshow.is-active,
+#tam-tv-stage .mode-wall.is-active {
+
+    background:
+
+        url("/static/tam-tv/fireworks.svg?v=20261126T175823Z")
+        center center / cover no-repeat,
+
+        radial-gradient(
+            ellipse at 15% 40%,
+            #60203d66,
+            transparent 45%
+        ),
+
+        radial-gradient(
+            ellipse at 85% 40%,
+            #51257366,
+            transparent 45%
+        ),
+
+        linear-gradient(
+            120deg,
+            #160b27,
+            #30132f,
+            #160b27
+        ) !important;
+}
+
+/* Let the festive background remain visible. */
+
+#tam-tv-stage .slide-fill {
+    opacity: .04 !important;
+}
+
+#tam-tv-stage .slide-shade {
+    opacity: .03 !important;
+}
+
+/* Refined outer frame. */
+
+.tam-glamour-border {
+    border: 3px double #d5ae6199;
+    inset: 1.5vh 1vw;
+}
+
+.tam-glamour-corner {
+    width: clamp(45px, 5vw, 85px);
+    height: clamp(45px, 5vw, 85px);
+}
+
+/* Keep the photo area visually dominant. */
+
+#tam-tv-stage .slide-img {
+    box-shadow: 0 0 25px #00000055;
+}
+
+/* Do not display decorations during black screen. */
+
+body.tv-blank .tam-glamour {
+    display: none !important;
+}
+

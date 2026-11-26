@@ -1,3 +1,4 @@
+from fastapi import BackgroundTasks
 from starlette.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from database import DB_PATH
@@ -310,17 +311,6 @@ def is_upload_window_open(event_id=EVENT_ID, check_at=None):
     if status != "active":
         return False
 
-    # Allow Diwali uploads through the end of the event.
-    if event_id == EVENT_ID:
-        montreal = ZoneInfo("America/Toronto")
-        current_time = (
-            check_at.astimezone(montreal)
-            if check_at is not None
-            else datetime.now(montreal)
-        )
-        if current_time < datetime(2026, 11, 28, 22, 0, tzinfo=montreal):
-            return True
-
     if not event_date:
         return False
 
@@ -346,13 +336,16 @@ def is_upload_window_open(event_id=EVENT_ID, check_at=None):
 
 
 class ContributorRegistration(BaseModel):
+    username: str
     name: str
     email: str
     mobile_number: str
     password: str
+    consent_accepted: bool = False
 
 
 class ContributorLogin(BaseModel):
+    username: str | None = None
     # TAM-CONTRIBUTOR-NAME-LOGIN-V1
     email: str | None = None
     name: str | None = None
@@ -505,7 +498,7 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 @app.post("/upload")
 async def upload_photo(
-    request: Request,
+    request: Request, background_tasks: BackgroundTasks,
     file: UploadFile = File(...)
 ):
     # Identify the contributor from their authenticated session.
@@ -739,6 +732,51 @@ async def upload_photo(
             flush=True
         )
 
+    # TAM-LIVE-TV-UPLOAD-INTEGRATION-V1
+    # Optional projection registration after successful upload.
+    # Never invalidate an already successful photograph upload.
+
+    try:
+        projection_form = await request.form()
+
+        projection_requested = (
+            projection_form.get("tam_live_tv") == "yes"
+        )
+
+        if projection_requested:
+
+            from tv_ingest import (
+                register_projection_photo,
+                process_projection_photo,
+            )
+
+            registered = await run_in_threadpool(
+                register_projection_photo,
+                DB_PATH,
+                photo_id,
+                contributor[0],
+                event_id,
+                True
+            )
+
+            if registered:
+
+                background_tasks.add_task(
+                    process_projection_photo,
+                    DB_PATH,
+                    photo_id,
+                    event_id
+                )
+
+    except Exception as projection_error:
+
+        print(
+            f"WARNING: Live TV registration failed "
+            f"for photo {photo_id}: "
+            f"{type(projection_error).__name__}",
+            flush=True
+        )
+
     return {
         "message": "Photo uploaded successfully",
         "indexing_status": indexing_status,
@@ -749,16 +787,186 @@ async def upload_photo(
     } 
 
 
+from fastapi import BackgroundTasks
+
+
+# TAM-ADMIN-REGISTRATION-PUSH-V1
+def notify_admins_of_new_contributor(contributor_id: int):
+
+    import logging
+    from push_notifications import send_push_notification
+    from pywebpush import WebPushException
+
+    logger = logging.getLogger("tam.admin.push")
+
+    try:
+
+        if not is_admin_approval_popup_window_open(EVENT_ID):
+            return
+
+        with sqlite3.connect(DB_PATH, timeout=15) as connection:
+
+            connection.row_factory = sqlite3.Row
+
+            pending = connection.execute(
+                """
+                SELECT id FROM contributors
+                WHERE id = ?
+                  AND event_id = ?
+                  AND approved = 0
+                  AND active = 1
+                  AND deleted_at IS NULL
+                """,
+                (contributor_id, EVENT_ID)
+            ).fetchone()
+
+            if pending is None:
+                return
+
+            subscriptions = connection.execute(
+                """
+                SELECT s.id
+                FROM push_subscriptions s
+                JOIN admins a ON a.id = s.recipient_id
+                WHERE s.recipient_type = 'admin'
+                  AND s.active = 1
+                  AND a.active = 1
+                  AND a.deleted_at IS NULL
+                  AND a.must_change_password = 0
+                  AND a.role IN ('super_admin', 'admin')
+                """
+            ).fetchall()
+
+        for subscription in subscriptions:
+
+            if not is_admin_approval_popup_window_open(EVENT_ID):
+                break
+
+            with sqlite3.connect(DB_PATH, timeout=15) as connection:
+
+                connection.row_factory = sqlite3.Row
+
+                current = connection.execute(
+                    """
+                    SELECT s.id, s.endpoint, s.p256dh, s.auth
+                    FROM push_subscriptions s
+                    JOIN admins a ON a.id = s.recipient_id
+                    WHERE s.id = ?
+                      AND s.recipient_type = 'admin'
+                      AND s.active = 1
+                      AND a.active = 1
+                      AND a.deleted_at IS NULL
+                      AND a.must_change_password = 0
+                      AND a.role IN ('super_admin', 'admin')
+                      AND EXISTS (
+                          SELECT 1 FROM contributors c
+                          WHERE c.id = ?
+                            AND c.event_id = ?
+                            AND c.approved = 0
+                            AND c.active = 1
+                            AND c.deleted_at IS NULL
+                      )
+                    """,
+                    (subscription["id"], contributor_id, EVENT_ID)
+                ).fetchone()
+
+            if current is None:
+                continue
+
+            try:
+
+                send_push_notification(
+                    endpoint=current["endpoint"],
+                    p256dh=current["p256dh"],
+                    auth=current["auth"],
+                    title="TAM Contributor Approval Request",
+                    body="A new contributor is awaiting your approval.",
+                    url="/admin/contributors/manage",
+                    tag=f"tam-contributor-{contributor_id}"
+                )
+
+                with sqlite3.connect(DB_PATH, timeout=15) as connection:
+
+                    connection.execute(
+                        """
+                        UPDATE push_subscriptions
+                        SET last_success_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND endpoint = ?
+                        """,
+                        (current["id"], current["endpoint"])
+                    )
+
+                logger.info(
+                    "TAM admin push accepted: subscription=%s",
+                    current["id"]
+                )
+
+            except Exception as error:
+
+                status = None
+
+                if isinstance(error, WebPushException):
+                    response = getattr(error, "response", None)
+                    if response is not None:
+                        status = response.status_code
+
+                expired = status in (404, 410)
+
+                with sqlite3.connect(DB_PATH, timeout=15) as connection:
+
+                    connection.execute(
+                        """
+                        UPDATE push_subscriptions
+                        SET last_failure_at = CURRENT_TIMESTAMP,
+                            active = CASE WHEN ? THEN 0 ELSE active END
+                        WHERE id = ? AND endpoint = ?
+                        """,
+                        (int(expired), current["id"], current["endpoint"])
+                    )
+
+                logger.warning(
+                    "TAM admin push failed: subscription=%s status=%s",
+                    current["id"], status
+                )
+
+    except Exception as error:
+
+        logger.error(
+            "TAM admin push workflow failed: %s",
+            type(error).__name__
+        )
+
+
 @app.post("/register")
-def register_contributor(data: ContributorRegistration, request: Request):
+def register_contributor(data: ContributorRegistration, request: Request, background_tasks: BackgroundTasks):
     name = data.name.strip()
     import re
+
+    username = data.username.strip().lower()
+
+    if not re.fullmatch(r"[a-z0-9_.-]{6,40}", username):
+        raise HTTPException(
+            400,
+            "Enter a valid username of at least 6 characters."
+        )
 
     mobile = data.mobile_number.strip()
     email = data.email.strip().lower()
     if len(email) > 254 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
         raise HTTPException(400, "Enter a valid email address.")
     password = data.password
+
+    # TAM-CONTRIBUTOR-REGISTRATION-CONSENT-V1
+    from contributor_registration_consent import (
+        CONSENT_VERSION,
+        CONSENT_TEXT,
+    )
+
+    if data.consent_accepted is not True:
+        raise HTTPException(
+            status_code=400,
+            detail="You must accept the Contributor Consent Agreement."
+        )
 
     if len(password) < 8:
         raise HTTPException(
@@ -795,33 +1003,55 @@ def register_contributor(data: ContributorRegistration, request: Request):
             SELECT id
             FROM contributors
             WHERE event_id = ?
-              AND LOWER(TRIM(name)) = LOWER(TRIM(?))
+              AND username = ? COLLATE NOCASE
               AND deleted_at IS NULL
             LIMIT 1
             """,
-            (EVENT_ID, name)
+            (EVENT_ID, username)
         ).fetchone()
 
         if existing is not None:
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    "Contributor name already exists. "
-                    "Please choose a different name."
+                    "Username already exists. "
+                    "Please choose a different username."
                 )
+            )
+
+        reserved = connection.execute(
+            """
+            SELECT 1 FROM admins
+            WHERE LOWER(TRIM(username)) = ?
+            UNION ALL
+            SELECT 1 FROM contributors
+            WHERE event_id = ?
+              AND username IS NULL
+              AND email IS NULL
+              AND deleted_at IS NULL
+              AND LOWER(TRIM(name)) = ?
+            LIMIT 1
+            """,
+            (username, EVENT_ID, username)
+        ).fetchone()
+
+        if reserved:
+            raise HTTPException(
+                409,
+                "This username is unavailable. Please choose another."
             )
 
         cursor = connection.execute(
         
             """
             INSERT INTO contributors
-                (name, mobile_number, event_id, approved, password_hash, email)
-            VALUES (?, ?, ?, 0, ?, ?)
+                (name, mobile_number, event_id, approved, password_hash, email, username)
+            VALUES (?, ?, ?, 0, ?, ?, ?)
             ON CONFLICT(event_id, email COLLATE NOCASE)
             WHERE deleted_at IS NULL DO NOTHING
             -- TAM-CONTRIBUTOR-REREGISTRATION-V2
             """,
-            (name, mobile, EVENT_ID, password_hash, email)
+            (name, mobile, EVENT_ID, password_hash, email, username)
         )
         if cursor.rowcount != 1:
             raise HTTPException(
@@ -837,6 +1067,29 @@ def register_contributor(data: ContributorRegistration, request: Request):
             VALUES (?, ?, ?, ?)
             """,
             (token_hash, contributor_id, now, expires_at)
+        )
+
+        # Save consent atomically with contributor registration.
+        connection.execute(
+            """
+            INSERT INTO contributor_registration_consents (
+                contributor_id,
+                event_id,
+                consent_version,
+                consent_text,
+                accepted_at
+            )
+            VALUES (
+                ?, ?, ?, ?,
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            )
+            """,
+            (
+                contributor_id,
+                EVENT_ID,
+                CONSENT_VERSION,
+                CONSENT_TEXT,
+            ),
         )
 
         connection.commit()
@@ -856,6 +1109,11 @@ def register_contributor(data: ContributorRegistration, request: Request):
         secure=os.environ.get("TAM_PRODUCTION") == "1",
         samesite="lax",
         path="/"
+    )
+
+    background_tasks.add_task(
+        notify_admins_of_new_contributor,
+        contributor_id
     )
 
     return response
@@ -908,7 +1166,8 @@ def contributor_approval_status(request: Request):
             "approved" if contributor["approved"]
             else "pending"
         ),
-        "name": contributor["name"]
+        "name": contributor["name"],
+        "contributor_id": contributor["id"]
     }
 
 
@@ -1110,15 +1369,19 @@ def login_contributor(
             # Contributor routes continue checking Contributor permissions.
             request.session.clear()
 
-            request.session["admin_id"] = admin["id"]
-            request.session["admin_session_version"] = (
+            # TAM-ADMIN-AS-CONTRIBUTOR-SESSION-V1
+            # Contributor login must not create Admin privileges.
+            # Preserve the authenticated Admin origin for later
+            # authorization checks without setting admin_id.
+
+            request.session["contributor_id"] = linked["id"]
+            request.session["contributor_admin_origin_id"] = admin["id"]
+            request.session["contributor_admin_session_version"] = (
                 admin["session_version"]
             )
-            request.session["csrf_nonce"] = secrets.token_urlsafe(32)
             request.session["tam_login_started_at"] = int(
                 tam_session_time.time()
             )
-            request.session["contributor_id"] = linked["id"]
 
             return {
                 "message": "Contributor login successful",
@@ -1133,7 +1396,20 @@ def login_contributor(
     with sqlite3.connect(DB_PATH) as connection:
         connection.row_factory = sqlite3.Row
 
-        if data.email is not None and data.email.strip():
+        if data.username is not None and data.username.strip():
+            contributor = connection.execute(
+                '''
+                SELECT id, name, password_hash,
+                       approved, active, deleted_at
+                FROM contributors
+                WHERE event_id = ?
+                  AND username = ? COLLATE NOCASE
+                  AND deleted_at IS NULL
+                ''',
+                (EVENT_ID, data.username.strip().lower())
+            ).fetchone()
+
+        elif data.email is not None and data.email.strip():
             contributor = connection.execute(
                 """
                 SELECT id, name, password_hash, approved, active, deleted_at
@@ -1146,7 +1422,7 @@ def login_contributor(
                 (EVENT_ID, data.email.strip().lower()),
             ).fetchone()
 
-        elif data.name is not None and data.name.strip():
+        if contributor is None and not data.email and data.name is not None and data.name.strip():
             matches = connection.execute(
                 """
                 SELECT id, name, password_hash,
@@ -1154,6 +1430,8 @@ def login_contributor(
                 FROM contributors
                 WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
                   AND event_id = ? AND email IS NULL
+                  AND username IS NULL
+                  AND deleted_at IS NULL
                 LIMIT 2
                 """,
                 (data.name.strip(), EVENT_ID)
@@ -1465,6 +1743,50 @@ def reject_contributor(
 
 
 # TAM-ADMIN-PENDING-NOTIFICATIONS-V1
+
+# TAM-ADMIN-APPROVAL-EVENT-WINDOW-V1
+def is_admin_approval_popup_window_open(event_id=EVENT_ID):
+    from datetime import datetime, date, time
+    from zoneinfo import ZoneInfo
+
+    with sqlite3.connect(DB_PATH) as connection:
+        event = connection.execute(
+            """
+            SELECT event_date,
+                   upload_start_time,
+                   upload_end_time,
+                   timezone,
+                   status
+            FROM events
+            WHERE event_id = ?
+            """,
+            (event_id,)
+        ).fetchone()
+
+    if event is None:
+        return False
+
+    event_date, start_time, end_time, tz_name, status = event
+
+    if status != "active":
+        return False
+
+    try:
+        now = datetime.now(ZoneInfo(tz_name))
+
+        scheduled_date = date.fromisoformat(event_date)
+        start = time.fromisoformat(start_time)
+        end = time.fromisoformat(end_time)
+
+        return (
+            now.date() < scheduled_date
+            or (now.date() == scheduled_date and now.time() < end)
+        )
+
+    except (ValueError, TypeError, KeyError):
+        return False
+
+
 @app.get("/admin/notifications/pending-contributors")
 def admin_pending_contributor_notifications(request: Request):
     admin_id = request.session.get("admin_id")
@@ -1509,6 +1831,7 @@ def admin_pending_contributor_notifications(request: Request):
 
     return {
         "total_pending": len(rows),
+        "popup_enabled": is_admin_approval_popup_window_open(EVENT_ID),
         "csrf_token": create_csrf_token(
             admin_id,
             request.session.get("csrf_nonce", "")
@@ -3093,6 +3416,10 @@ async def manage_events(request: Request):
         name="admin_manage_events.html",
         context={
             "event": event,
+            # TAM-EVENT-SAVE-CONFIRMATION-V1
+            "event_saved": request.session.pop(
+                "tam_event_saved_confirmation", False
+            ),
             "csrf_token": create_csrf_token(
                 admin_id,
                 request.session.get("csrf_nonce", "")
@@ -3428,6 +3755,8 @@ async def save_event_settings(
     upload_end_time: str = Form(...),
     status: str = Form(...),
     retention_hours: int = Form(...),
+    gallery_code_required: int = Form(1),
+    new_gallery_access_code: str = Form(""),
     csrf_token: str = Form(...)
 ):
     admin_id = request.session.get("admin_id")
@@ -3513,8 +3842,27 @@ async def save_event_settings(
             detail="Retention must be between 1 and 168 hours"
         )
 
+    if gallery_code_required not in (0, 1):
+        raise HTTPException(400, "Invalid gallery code setting")
+    from gallery_access_code import hash_gallery_access_code, is_valid_gallery_access_code_hash
+    new_hash = None
+    if new_gallery_access_code:
+        try:
+            new_hash = hash_gallery_access_code(new_gallery_access_code)
+        except ValueError:
+            raise HTTPException(400, "Access code must contain 4–128 characters")
+
     # Save the settings.
     with sqlite3.connect(DB_PATH) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        current = connection.execute("SELECT gallery_access_code_hash, gallery_code_required, gallery_enabled FROM events WHERE event_id = ?", (EVENT_ID,)).fetchone()
+        if current is None:
+            raise HTTPException(404, "Event not found")
+        effective_hash = new_hash or current[0]
+        if gallery_code_required and current[2] and not is_valid_gallery_access_code_hash(effective_hash):
+            raise HTTPException(400, "Configure a valid access code before requiring it on an enabled gallery")
+        if new_hash or current[1] != gallery_code_required:
+            connection.execute("UPDATE gallery_guest_sessions SET expires_at = 0 WHERE event_id = ?", (EVENT_ID,))
         cursor = connection.execute(
             """
             UPDATE events
@@ -3523,7 +3871,9 @@ async def save_event_settings(
                 upload_start_time = ?,
                 upload_end_time = ?,
                 status = ?,
-                retention_hours = ?
+                retention_hours = ?,
+                gallery_code_required = ?,
+                gallery_access_code_hash = ?
             WHERE event_id = ?
             """,
             (
@@ -3533,6 +3883,8 @@ async def save_event_settings(
                 upload_end_time,
                 status,
                 retention_hours,
+                gallery_code_required,
+                effective_hash,
                 EVENT_ID
             )
         )
@@ -3543,6 +3895,9 @@ async def save_event_settings(
                 status_code=404,
                 detail="Event not found"
             )
+
+    # Show confirmation only after successful database commit.
+    request.session["tam_event_saved_confirmation"] = True
 
     return RedirectResponse(
         url="/admin/events",
@@ -4370,14 +4725,14 @@ async def require_event_photo_consent(request: Request, call_next):
     from fastapi.responses import JSONResponse
 
     path = request.url.path
+    # TAM-SEPARATE-GALLERY-SELFIE-CONSENT-V1
+    # Gallery browsing uses its own registration and consent.
+    # Selfie-search routes retain separate facial-recognition consent.
     photo_page = path in {
         "/find-my-photos",
-        "/gallery",
-        "/gallery/register",
     }
 
     photo_api = path.startswith((
-        "/api/gallery/",
         "/api/find-my-photos/",
         "/api/guest/photos/",
     ))
@@ -4433,19 +4788,27 @@ async def tam_event_portal(request: Request):
                 (contributor_id, EVENT_ID),
             ).fetchone()
 
-    # Guests must complete event consent before entering.
-    # Authenticated, approved contributors may access the portal.
-    if (
-        not agenda_only
-        and contributor is None
-        and active_event_selfie_consent(request) is None
-        and not recognized_event_decline(request)
-    ):
-        return RedirectResponse(
-            EVENT_CONSENT_URL,
-            status_code=303,
-            headers=headers,
+    # TAM-ATTENDEE-GALLERY-FIRST-ENTRY-V1
+    # Gallery registration and selfie consent are independent.
+    # Attendees must have a valid gallery registration session.
+    # Contributors retain their existing authenticated access.
+    # The agenda remains available without gallery registration.
+
+    if not agenda_only and contributor is None:
+        from gallery_routes import get_gallery_viewer
+
+        viewer = get_gallery_viewer(
+            request,
+            DB_PATH,
+            EVENT_ID,
         )
+
+        if viewer is None:
+            return RedirectResponse(
+                url="/gallery/register",
+                status_code=303,
+                headers=headers,
+            )
 
     return templates.TemplateResponse(
         request=request,
@@ -5068,3 +5431,8 @@ async def admin_watermarked_photo_preview(
             "X-Content-Type-Options": "nosniff"
         }
     )
+
+
+# TAM-LIVE-TV-ROUTER-V1
+from tv_routes import router as live_tv_router
+app.include_router(live_tv_router)

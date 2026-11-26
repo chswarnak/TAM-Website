@@ -6,7 +6,7 @@
     <meta name="viewport"
           content="width=device-width, initial-scale=1.0">
 
-    <title>TAM Member Login</title>
+    <title>TAM Contributor Login</title>
 
     <style>
         body {
@@ -226,12 +226,13 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 </a>
 
     <div class="container tam-exact-border">
-        <h1>TAM Member Login</h1>
+        <h1>TAM Contributor Login</h1>
         <p>Sign in to upload your event photos</p>
 
         <form id="loginForm">
-            <label for="contributor_name">Email address</label>
-            <p>Registered before email sign-in? Use your contributor name.</p>
+            <label for="contributor_name">Username or Email Address</label>
+            <p>Sign in with your username or email address.
+    Existing contributors may continue using their previous login details.</p>
             <input type="text"
                    id="contributor_name"
                    required>
@@ -265,7 +266,45 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
     </div>
 
 
-        <p id="message" role="status"></p>
+        
+<!-- TAM-CONTRIBUTOR-REGISTRATION-NOTICE-V1 -->
+
+<div id="tamRegistrationNotice"
+     hidden
+     role="status"
+     style="
+        background:#e8f5e9;
+        border:1px solid #26954c;
+        color:#176b32;
+        border-radius:12px;
+        padding:16px;
+        margin:15px 0;
+        text-align:center;
+     ">
+
+    <strong>Registration Submitted Successfully!</strong>
+
+    <p>Your account has been submitted for Admin approval.</p>
+
+    <p>Once approved, you can log in below.</p>
+
+</div>
+
+<script>
+(() => {
+    const params = new URLSearchParams(
+        window.location.search
+    );
+
+    if (params.get("registered") === "1") {
+        document.getElementById(
+            "tamRegistrationNotice"
+        ).hidden = false;
+    }
+})();
+</script>
+
+<p id="message" role="status"></p>
     </div>
 
     <script>
@@ -290,7 +329,9 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
                         },
                         credentials: "same-origin",
                         body: JSON.stringify({
-                            ...(name.includes("@") ? { email: name } : { name }),
+                            ...(name.includes("@")
+        ? { email: name }
+        : { username: name, name: name }),
                             password
                         })
                     });
@@ -311,5 +352,6 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
                 }
             });
     </script>
+    <script defer src="/static/tam-password-visibility.js?v=1098"></script>
 </body>
 </html>

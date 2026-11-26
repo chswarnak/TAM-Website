@@ -349,6 +349,20 @@ body > .card {
             <label for="name">Full Name</label>
             <input id="name" type="text" required maxlength="100">
 
+        <!-- TAM-CONTRIBUTOR-USERNAME-V1 -->
+        <label for="username">Username</label>
+        <input id="username"
+               type="text"
+               required
+               minlength="6"
+               maxlength="40"
+               pattern="[a-zA-Z0-9_.\-]{6,40}"
+               autocomplete="username"
+               autocapitalize="none"
+               spellcheck="false"
+               placeholder="Choose your username">
+        
+
             <label for="mobile">Mobile Number</label>
             <input id="mobile" type="tel" required maxlength="30">
 
@@ -374,8 +388,85 @@ body > .card {
             <input id="email" type="email" maxlength="254"
                    autocomplete="email" required>
 
-            <button id="registerButton" type="submit">
-                Register as Contributor
+            
+<!-- TAM-CONTRIBUTOR-REGISTRATION-CONSENT-UI-V1 -->
+<div class="tam-contributor-consent"
+     style="margin:20px 0;">
+
+    <h3 style="margin-bottom:10px;">
+        Contributor Privacy &amp; Media Sharing Agreement
+    </h3>
+
+    <p style="font-size:13px;">
+        Consent version: 2026-11-contributor-v1
+    </p>
+
+    <div
+        style="
+            max-height:280px;
+            overflow-y:auto;
+            overflow-x:hidden;
+            padding:16px;
+            border:1px solid #b99546;
+            border-radius:12px;
+            background:rgba(255,248,225,0.08);
+            line-height:1.6;
+            text-align:left;
+            font-size:14px;
+        "
+        role="region"
+        aria-label="Contributor Consent Agreement"
+        tabindex="0"
+    >
+        <p style='white-space:pre-line;margin:12px 0;'>1. Registration and Personal Information
+TAM collects my name, mobile number and email address for contributor registration, account management, communication and event administration. My account requires approval from an authorized TAM Administrator.</p><p style='white-space:pre-line;margin:12px 0;'>2. Photography and Video Recording
+I will capture photographs and videos responsibly during authorized TAM events. I will respect attendees&#x27; privacy, dignity and reasonable requests not to be photographed, with particular care for children.</p><p style='white-space:pre-line;margin:12px 0;'>3. Uploading Photographs and Videos
+I will upload only appropriate event-related content that I am authorized to share. I will not upload offensive, unlawful or privacy-invasive material.</p><p style='white-space:pre-line;margin:12px 0;'>4. Event Media Sharing
+Approved event photographs may be viewed and downloaded by registered attendees. I understand that subsequent sharing may occur outside TAM&#x27;s direct control.</p><p style='white-space:pre-line;margin:12px 0;'>5. Contributor Identification and Watermarking
+TAM may display my contributor name as a watermark or attribution on photographs I upload. My identity may be associated with uploaded media in TAM&#x27;s records.</p><p style='white-space:pre-line;margin:12px 0;'>6. Storage and Security
+TAM uses AWS cloud services to store and process event media. Registration and activity information may be recorded for security and administration.</p><p style='white-space:pre-line;margin:12px 0;'>7. Media Retention
+Event media and registration records are handled under TAM&#x27;s applicable retention and deletion practices. Different types of records may have different retention periods.</p><p style='white-space:pre-line;margin:12px 0;'>8. Download and Activity Tracking
+TAM may record uploads, downloads, account identifiers, media identifiers and timestamps for administration and accountability.</p><p style='white-space:pre-line;margin:12px 0;'>9. Contributor Responsibilities
+I will protect my login credentials and will not share my account. TAM Administrators may suspend or revoke contributor access for misuse.</p><p style='white-space:pre-line;margin:12px 0;'>10. Photograph Deletion and Removal
+Subject to application permissions, I may request removal of photographs or delete my own uploaded photographs. TAM Administrators may remove event media when appropriate.</p><p style='white-space:pre-line;margin:12px 0;'>11. Facial Recognition
+This registration agreement does not authorize facial recognition or selfie matching. Those features require separate, explicit and optional consent.</p><p style='white-space:pre-line;margin:12px 0;'>12. Consent Withdrawal and Privacy Requests
+I may contact TAM regarding my personal information or to withdraw applicable consent. Withdrawal may affect my contributor access and may not reverse downloads already completed.</p><p style='white-space:pre-line;margin:12px 0;'>13. Agreement and Acceptance
+I confirm that I have read and understood this agreement and accept the responsibilities described.</p>
+    </div>
+
+    <label for="consentAccepted"
+           style="
+               display:flex;
+               align-items:flex-start;
+               gap:12px;
+               margin-top:16px;
+               line-height:1.5;
+               text-align:left;
+           ">
+
+        <input
+            id="consentAccepted"
+            type="checkbox"
+            required
+            style="
+                width:20px;
+                height:20px;
+                min-width:20px;
+                margin-top:3px;
+                flex-shrink:0;
+            "
+        >
+
+        <span>
+            I have read and agree to the TAM Contributor
+            Registration, Privacy &amp; Media Sharing Agreement.
+        </span>
+
+    </label>
+</div>
+
+<button id="registerButton" type="submit">
+                I Agree &amp; Register as Contributor
             </button>
         </form>
 
@@ -426,28 +517,39 @@ body > .card {
                     },
                     credentials: "same-origin",
                     body: JSON.stringify({
+                    username: document.getElementById("username").value.trim().toLowerCase(),
                         name,
                         mobile_number,
                         email: document.getElementById("email").value.trim(),
-                        password
+                        password,
+                        consent_accepted:
+                            document.getElementById("consentAccepted").checked
                     })
                 });
 
                 const result = await response.json();
 
-                if (response.ok) {
+                if (response.ok && result.status === "pending_approval") {
                     form.hidden = true;
-                    if (typeof window.tamBeginApprovalMonitoring === "function") {
-                        window.tamBeginApprovalMonitoring();
-                    }
+
+                    document.getElementById(
+                        "tamContributorPendingPopup"
+                    ).style.display = "flex";
+                    // TAM-CONTRIBUTOR-LOGIN-REDIRECT-V1
+
+                    window.setTimeout(() => {
+                        window.location.replace(
+                            "/contributor/login?registered=1"
+                        );
+                    }, 3000);
                     // TAM-DIRECT-APPROVAL-MONITOR-V1
 
                     // TAM-REGISTRATION-NAME-LOGIN-MESSAGE-V1
                     message.textContent =
                         "Registration submitted successfully! " +
                         "Your account is awaiting administrator approval. " +
-                        "Once approved, log in using your registered " +
-                        "contributor name and password.";
+                        "Once approved, log in using your username or " +
+                        "email address and password.";
                 } else {
                     message.textContent =
                         typeof result.detail === "string"
@@ -462,6 +564,55 @@ body > .card {
             }
         });
     </script>
+
+
+<!-- TAM-CONTRIBUTOR-PENDING-POPUP-V1 -->
+<div id="tamContributorPendingPopup"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="tamPendingTitle"
+     style="display:none; position:fixed; inset:0;
+            background:rgba(0,0,0,.6); z-index:9998;
+            align-items:center; justify-content:center;
+            padding:20px;">
+
+    <div style="background:#fffaf0;
+                border:2px solid #c89b3c;
+                border-radius:18px; padding:28px;
+                width:100%; max-width:420px;
+                text-align:center;
+                box-shadow:0 10px 35px rgba(0,0,0,.3);">
+
+        <h2 id="tamPendingTitle" style="color:#a66b00;">
+            Registration Submitted Successfully!
+        </h2>
+
+        <div style="font-size:44px;">&#9203;</div>
+
+        <h3>Waiting for Administrator Approval</h3>
+
+        <p>Your registration has been received successfully.</p>
+
+        <p>An authorized TAM Administrator will review
+           your registration.</p>
+
+        <p>Once approved, you can sign in using your
+           username or email address and password.</p>
+
+        <p style="font-size:14px;color:#666;">
+            Redirecting you to Contributor Login...
+        </p>
+
+        <button type="button"
+                onclick="document.getElementById('tamContributorPendingPopup').style.display='none'"
+                style="background:#8b3a3a;color:white;
+                       padding:12px 22px;border:0;
+                       border-radius:8px;cursor:pointer;">
+            OK
+        </button>
+
+    </div>
+</div>
 
 <!-- TAM-CONTRIBUTOR-APPROVED-POPUP-V1 -->
 <div id="tamContributorApprovedPopup"
@@ -508,6 +659,7 @@ body > .card {
 
     let approvalCheckTimer = null;
     let approvalPopupShown = false;
+    let currentContributorId = null;
 
 
     // TAM-APPROVAL-MONITOR-V2
@@ -544,7 +696,21 @@ body > .card {
 
             const result = await response.json();
 
+            if (result.contributor_id !== currentContributorId) {
+                stopApprovalMonitoring();
+                document.getElementById(
+                    "tamContributorPendingPopup"
+                ).style.display = "none";
+                document.getElementById("message").textContent =
+                    "Registration session changed. Please log in or register again.";
+                return "invalid";
+            }
+
             if (result.status === "approved") {
+
+                document.getElementById(
+                    "tamContributorPendingPopup"
+                ).style.display = "none";
                 approvalPopupShown = true;
                 popup.style.display = "flex";
                 stopApprovalMonitoring();
@@ -560,7 +726,9 @@ body > .card {
         }
     }
 
-    async function beginApprovalMonitoring() {
+    async function beginApprovalMonitoring(contributorId) {
+        if (!Number.isInteger(contributorId)) return;
+        currentContributorId = contributorId;
         if (approvalPopupShown ||
             approvalCheckTimer !== null) return;
 
@@ -576,12 +744,12 @@ body > .card {
 
     window.tamBeginApprovalMonitoring = beginApprovalMonitoring;
 
-    // Check once when the registration page opens.
-    // Poll only when a valid pending registration exists.
-    beginApprovalMonitoring();
+    // TAM-REGISTRATION-MONITOR-FIX-V1
+    // Start monitoring only after successful new registration.
 
 })();
 </script>
 
+    <script defer src="/static/tam-password-visibility.js?v=1098"></script>
 </body>
 </html>

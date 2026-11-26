@@ -9,6 +9,10 @@
     let csrfToken = "";
     let busy = false;
 
+    // TAM-APPROVAL-POPUP-EVENT-SCHEDULE-V1
+    // The backend determines whether the event window is open.
+    let popupEnabled = false;
+
     // Later suppresses the same request on this page only.
     // Navigating to another Admin page allows it to appear again.
     // TAM-APPROVAL-SNOOZE-60S-V1
@@ -117,7 +121,7 @@
     }
 
     function showNext() {
-        if (busy || current) return;
+        if (!popupEnabled || busy || current) return;
 
         const next = requests.find(
             person =>
@@ -159,6 +163,15 @@
             if (!response.ok) return;
 
             const data = await response.json();
+
+            // Respect the event date and timings in Manage Events.
+            popupEnabled = data.popup_enabled === true;
+
+            if (!popupEnabled) {
+                hide();
+                requests = [];
+                return;
+            }
 
             requests = data.contributors || [];
             csrfToken = data.csrf_token || "";

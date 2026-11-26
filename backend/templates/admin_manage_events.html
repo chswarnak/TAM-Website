@@ -113,6 +113,33 @@
         <h1>TAM Event Management</h1>
         <p>Configure event details and upload schedules.</p>
 
+        {% if event_saved %}
+        <!-- TAM-EVENT-SAVE-CONFIRMATION-V1 -->
+        <div id="tam-event-saved"
+             role="status"
+             aria-live="polite"
+             style="
+                background:#e8f8ec;
+                color:#176536;
+                border:2px solid #71b883;
+                padding:16px;
+                border-radius:12px;
+                margin:16px 0;
+                text-align:center;
+                font-weight:bold;
+                font-size:17px;
+             ">
+            ✅ Event Settings Saved Successfully!
+            <div style="
+                font-size:14px;
+                font-weight:normal;
+                margin-top:6px;
+            ">
+                Your event details and timings have been updated.
+            </div>
+        </div>
+        {% endif %}
+
         <h2>Event Settings</h2>
 
         <form method="post" action="/admin/events/save">
@@ -167,8 +194,50 @@
                    min="1"
                    required>
 
+            <h2>Gallery Security Settings</h2>
+            <label for="gallery_code_required">Require Gallery Access Code</label>
+            <select id="gallery_code_required" name="gallery_code_required">
+                <option value="1" {% if event.gallery_code_required %}selected{% endif %}>ON — Code required</option>
+                <option value="0" {% if not event.gallery_code_required %}selected{% endif %}>OFF — No code required</option>
+            </select>
+            <label for="new_gallery_access_code">Set / Change Gallery Access Code</label>
+            <input id="new_gallery_access_code" name="new_gallery_access_code" type="password" minlength="4" maxlength="128" autocomplete="new-password">
+            <!-- TAM-SHOW-NEW-GALLERY-CODE-V1 -->
+            <label for="tam-show-new-gallery-code" style="display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:normal;">
+                <input type="checkbox" id="tam-show-new-gallery-code" autocomplete="off" style="width:auto;margin:0;">
+                Show Access Code
+            </label>
+            <script>
+            (function () {
+                const field = document.getElementById('new_gallery_access_code');
+                const toggle = document.getElementById('tam-show-new-gallery-code');
+                function update() {
+                    field.type = toggle.checked ? 'text' : 'password';
+                }
+                function hide() {
+                    toggle.checked = false;
+                    update();
+                }
+                toggle.addEventListener('change', update);
+                window.addEventListener('pageshow', hide);
+                hide();
+            })();
+            </script>
+            <p>Leave blank to keep the existing code. Status: {{ 'Configured' if event.gallery_access_code_hash else 'Not configured' }}.</p>
+            <p>Changing the code or requirement expires existing attendee gallery sessions. With the code OFF, anyone with the link can register.</p>
             <button type="submit">Save Event Settings</button>
         </form>
     </div>
+<script>
+(function () {
+    const banner = document.getElementById("tam-event-saved");
+
+    if (banner) {
+        setTimeout(function () {
+            banner.style.display = "none";
+        }, 5000);
+    }
+})();
+</script>
 </body>
 </html>

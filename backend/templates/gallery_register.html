@@ -387,24 +387,29 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
                type="tel" maxlength="20" required
                autocomplete="tel">
 
+        {% if gallery_code_required %}
         <label for="gallery_access_code">Event Access Code</label>
         <input id="gallery_access_code" name="gallery_access_code"
                type="password" maxlength="128" required
                autocomplete="off">
+        {% endif %}
 
-        <label class="consent-label">
-            <input type="checkbox"
-                   name="gallery_acknowledged"
-                   value="true"
-                   required>
-            I understand that gallery-approved event photographs
-            may be viewed and downloaded by other authorized attendees.
-            My registration details and downloads may be recorded
-            for event administration.
-        </label>
+        <div class="tam-gallery-privacy-notice" style="margin:16px 0;padding:16px;border:1px solid #b99546;border-radius:12px;background:rgba(255,248,225,.08);">
+<h3 style="margin-top:0;">TAM Gallery Privacy &amp; Photo-Sharing Agreement</h3>
+<p><strong>Consent version: 2026-11-gallery-v2</strong></p>
+<p><strong>1.</strong> TAM collects my name and mobile number to register me for the event photo gallery.</p>
+<p><strong>2.</strong> Approved event photographs may include me and other attendees. Registered gallery users may view and download available event photographs.</p>
+<p><strong>3.</strong> TAM may record my gallery registration details, downloaded photograph or media ID, and download date and time for event administration and accountability.</p>
+<p><strong>4.</strong> I will respect the privacy of other people and will not misuse downloaded photographs or share them inappropriately.</p>
+<p><strong>5.</strong> TAM uses AWS cloud services to store event media. Event photographs and registration information are handled according to TAM's applicable retention and deletion practices.</p>
+<p><strong>6.</strong> I may contact TAM through its official communication channels with privacy questions or to request review or removal of a photograph.</p>
+<p><strong>7.</strong> Gallery registration does not authorize facial recognition or selfie matching. These features require separate, optional consent.</p>
+<p><strong>8.</strong> I have read and accept this gallery privacy and photo-sharing agreement.</p>
+</div>
+<label class="consent-label"><input type="checkbox" name="gallery_acknowledged" value="true" required> I have read and accept the TAM Gallery Privacy &amp; Photo-Sharing Agreement.</label>
 
         <button type="submit" id="registerButton">
-            Enter Photo Gallery
+            I Agree &amp; Enter Photo Gallery
         </button>
 
         <p id="galleryMessage" role="status" aria-live="polite"></p>
@@ -463,12 +468,12 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             }
 
             // Do not retain the access code after successful registration.
-            form.elements["gallery_access_code"].value = "";
+            if (form.elements["gallery_access_code"]) form.elements["gallery_access_code"].value = "";
 
-            message.textContent = "Access granted. Opening gallery...";
+            message.textContent = "Consent recorded. Opening TAM event page...";
             message.style.color = "#176b3a";
 
-            window.location.assign("/gallery");
+            window.location.assign("/events/tam-diwali-2026");
 
         } catch (error) {
             message.textContent =
@@ -481,5 +486,6 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 })();
 </script>
 
+    <script defer src="/static/tam-password-visibility.js?v=1098"></script>
 </body>
 </html>

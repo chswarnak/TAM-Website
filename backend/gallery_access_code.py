@@ -15,8 +15,8 @@ ITERATIONS = 600_000
 def hash_gallery_access_code(code: str) -> str:
     """Create a salted PBKDF2-HMAC-SHA256 hash."""
 
-    if not isinstance(code, str) or not 12 <= len(code) <= 128:
-        raise ValueError("Access code must contain 12–128 characters")
+    if not isinstance(code, str) or not 4 <= len(code) <= 128:
+        raise ValueError("Access code must contain 4–128 characters")
 
     salt = secrets.token_bytes(16)
 

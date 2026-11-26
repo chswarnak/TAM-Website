@@ -1,0 +1,319 @@
+
+/* TAM Deepavali Celebration Screen */
+
+.tam-celebration {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    color: #ffe7a1;
+    background:
+        radial-gradient(
+            ellipse at 50% 42%,
+            #752654 0%,
+            #431537 43%,
+            #1b0b27 100%
+        );
+}
+
+.tam-celebration-border {
+    position: absolute;
+    inset: 3vh 2vw;
+    border: 3px solid #d8ae58;
+    outline: 1px solid #8d652b;
+    outline-offset: 7px;
+    border-radius: 24px;
+    box-shadow:
+        inset 0 0 35px #e8b74922,
+        0 0 30px #e8b74933;
+}
+
+.tam-celebration-content {
+    position: absolute;
+    inset: 6vh 8vw;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    z-index: 2;
+    gap: 1.2vh;
+}
+
+.tam-celebration-organization {
+    font-size: clamp(14px, 1.8vw, 36px);
+    letter-spacing: .25em;
+    font-weight: 800;
+    color: #f5d893;
+}
+
+.tam-celebration-diyas {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 2vw;
+    font-size: clamp(36px, 5vw, 100px);
+    line-height: 1.1;
+}
+
+.tam-celebration-diyas span {
+    display: inline-block;
+    animation: tam-diya-glow 2s ease-in-out infinite alternate;
+}
+
+.tam-celebration-diyas span:nth-child(2) {
+    font-size: 1.3em;
+    animation-delay: .5s;
+}
+
+.tam-celebration-diyas span:nth-child(3) {
+    animation-delay: 1s;
+}
+
+.tam-celebration-title {
+    margin: 0;
+    font-family: "Playfair Display", Georgia, serif;
+    font-size: clamp(48px, 7.5vw, 155px);
+    line-height: 1.05;
+    font-weight: 900;
+    letter-spacing: -.025em;
+    color: #ffe6a0;
+    text-shadow:
+        0 3px 0 #875320,
+        0 0 35px #ffbc5377;
+}
+
+.tam-celebration-year {
+    font-size: clamp(22px, 3vw, 62px);
+    font-weight: 800;
+    letter-spacing: .3em;
+    color: #f6cc6c;
+}
+
+.tam-celebration-subtitle {
+    font-size: clamp(17px, 2vw, 42px);
+    font-weight: 600;
+    color: #fff0d5;
+}
+
+.tam-celebration-divider {
+    font-size: clamp(12px, 1.7vw, 30px);
+    color: #c89c4d;
+    letter-spacing: .1em;
+}
+
+.tam-celebration-messages {
+    position: relative;
+    width: 100%;
+    height: 9vh;
+    min-height: 65px;
+    font-family: "Playfair Display", Georgia, serif;
+    font-size: clamp(17px, 2.1vw, 44px);
+    font-style: italic;
+    color: #ffe9b6;
+}
+
+.tam-celebration-messages span {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    animation: tam-message-cycle 24s infinite;
+}
+
+.tam-celebration-messages span:nth-child(2) {
+    animation-delay: 6s;
+}
+
+.tam-celebration-messages span:nth-child(3) {
+    animation-delay: 12s;
+}
+
+.tam-celebration-messages span:nth-child(4) {
+    animation-delay: 18s;
+}
+
+.tam-celebration-slogan {
+    font-size: clamp(20px, 2.6vw, 52px);
+    font-weight: 800;
+    color: #ffd574;
+}
+
+.tam-celebration-footer {
+    font-size: clamp(12px, 1.2vw, 24px);
+    letter-spacing: .12em;
+    color: #e4c28b;
+}
+
+.tam-celebration-sparkles {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.tam-celebration-sparkles span {
+    position: absolute;
+    color: #ffd778;
+    animation: tam-sparkle 4s ease-in-out infinite;
+}
+
+.tam-rangoli {
+    position: absolute;
+    width: min(19vw, 30vh);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    opacity: .45;
+    background:
+        repeating-conic-gradient(
+            from 0deg,
+            transparent 0deg 8deg,
+            #e8bb66 8deg 12deg,
+            transparent 12deg 22deg
+        );
+    border: 7px double #d4a858;
+    box-shadow:
+        inset 0 0 0 10px #68244a,
+        inset 0 0 0 12px #d4a858,
+        0 0 0 7px #9d623b66;
+}
+
+.tam-rangoli.top-left {
+    top: -6vw;
+    left: -6vw;
+}
+
+.tam-rangoli.top-right {
+    top: -6vw;
+    right: -6vw;
+}
+
+.tam-rangoli.bottom-left {
+    bottom: -6vw;
+    left: -6vw;
+}
+
+.tam-rangoli.bottom-right {
+    bottom: -6vw;
+    right: -6vw;
+}
+
+@keyframes tam-diya-glow {
+    from {
+        transform: translateY(0);
+        filter: drop-shadow(0 0 7px #ffb43a);
+    }
+    to {
+        transform: translateY(-3px);
+        filter: drop-shadow(0 0 24px #ffdc6a);
+    }
+}
+
+@keyframes tam-sparkle {
+    0%, 100% {
+        opacity: .1;
+        transform: scale(.7);
+    }
+    50% {
+        opacity: .8;
+        transform: scale(1.15);
+    }
+}
+
+@keyframes tam-message-cycle {
+    0% { opacity: 0; }
+    4%, 21% { opacity: 1; }
+    25%, 100% { opacity: 0; }
+}
+
+/* Avoid duplicate heading on the celebration screen. */
+
+body:has(
+    #tam-tv-stage [data-mode="waiting"].is-active
+) #tam-tv-heading {
+    display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .tam-celebration-diyas span,
+    .tam-celebration-sparkles span {
+        animation: none;
+    }
+
+    .tam-celebration-messages span {
+        animation: none;
+        opacity: 0;
+    }
+
+    .tam-celebration-messages span:first-child {
+        opacity: 1;
+    }
+}
+
+
+/* TAM-PERSISTENT-CELEBRATION-V2 */
+
+/* Keep the festive screen behind the photo display. */
+
+body:not(.tv-blank)
+#tam-tv-stage section[data-mode="waiting"] {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    z-index: 1;
+    transform: none !important;
+}
+
+/* Show photographs above the festive background. */
+
+#tam-tv-stage section[data-mode="wall"].is-active,
+#tam-tv-stage section[data-mode="slideshow"].is-active {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    z-index: 5;
+    background: #140c23;
+}
+
+/* Preserve intentional Admin black screen. */
+
+body.tv-blank #tam-tv-stage section {
+    display: none !important;
+}
+
+/* Ensure the celebration design is fully visible. */
+
+.tam-celebration {
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+.tam-celebration-content {
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+
+
+/* TAM-EMPTY-LAYER-PROTECTION-V3 */
+
+body:not(.tv-blank)
+#tam-tv-stage section[data-mode="wall"]:not(:has(#wall-grid img)) {
+    display: none !important;
+}
+
+body:not(.tv-blank)
+#tam-tv-stage section[data-mode="slideshow"]:not(:has(.slide-layer.is-active .slide-img[src])) {
+    display: none !important;
+}
+
+body:not(.tv-blank)
+#tam-tv-stage section[data-mode="waiting"] {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    z-index: 1 !important;
+}
+
+body.tv-blank #tam-tv-stage section {
+    display: none !important;
+}
+

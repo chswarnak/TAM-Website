@@ -110,25 +110,76 @@ def list_gallery_photos(request: __import__("fastapi").Request, page: int = 1):
             SELECT
                 p.id,
                 p.uploaded_at,
+                p.contributor_id,
                 c.name AS contributor_name
             FROM photos AS p
             JOIN contributors AS c
               ON c.id = p.contributor_id
             WHERE p.event_id = ?
               AND p.status = 'available'
+              AND (p.gallery_approved = 1 OR ? = 1)
               AND p.s3_bucket = 'tam-smart-event-photos'
               AND p.s3_key IS NOT NULL
               AND p.s3_key != ''
             ORDER BY p.uploaded_at DESC, p.id DESC
             LIMIT ? OFFSET ?
             """,
-            (event_id, limit, offset),
+            (
+                event_id,
+                int(viewer.get("type") == "contributor"),
+                limit,
+                offset,
+            ),
         ).fetchall()
+
+    # TAM-GALLERY-CONTRIBUTOR-DELETE-PERMISSION-V1
+    # Only authenticated Contributors can delete their own photos.
+    # Never accept ownership information from browser input.
+
+    contributor_viewer_id = None
+
+    if viewer.get("type") == "contributor":
+        try:
+            contributor_viewer_id = int(viewer["id"])
+        except (TypeError, ValueError, KeyError):
+            contributor_viewer_id = None
+
+    gallery_photos = []
+
+    for photo in photos:
+        item = dict(photo)
+
+        owner_id = item.pop("contributor_id", None)
+
+        item["can_delete"] = (
+            contributor_viewer_id is not None
+            and owner_id == contributor_viewer_id
+        )
+
+        gallery_photos.append(item)
+
+    # TAM-CONTRIBUTOR-DELETE-CSRF-V1
+    # Expose a deletion CSRF token only to contributors.
+    delete_csrf_token = None
+
+    if viewer.get("type") == "contributor":
+        import secrets
+
+        delete_csrf_token = request.session.get(
+            "tam_photo_delete_csrf"
+        )
+
+        if not delete_csrf_token:
+            delete_csrf_token = secrets.token_urlsafe(32)
+            request.session[
+                "tam_photo_delete_csrf"
+            ] = delete_csrf_token
 
     return {
         "event_id": event_id,
         "page": page,
-        "photos": [dict(photo) for photo in photos]
+        "photos": gallery_photos,
+        "delete_csrf_token": delete_csrf_token
     }
 
 
@@ -178,11 +229,16 @@ def gallery_photo_thumbnail(
             WHERE p.id = ?
               AND p.event_id = ?
               AND p.status = 'available'
+              AND (p.gallery_approved = 1 OR ? = 1)
               AND p.s3_bucket = 'tam-smart-event-photos'
               AND p.s3_key IS NOT NULL
               AND p.s3_key != ''
             """,
-            (photo_id, event_id),
+            (
+                photo_id,
+                event_id,
+                int(viewer.get("type") == "contributor"),
+            ),
         ).fetchone()
 
     if photo is None:
@@ -214,8 +270,13 @@ def gallery_photo_thumbnail(
             WHERE id = ?
               AND event_id = ?
               AND status = 'available'
+              AND (gallery_approved = 1 OR ? = 1)
             """,
-            (photo_id, event_id),
+            (
+                photo_id,
+                event_id,
+                int(viewer.get("type") == "contributor"),
+            ),
         ).fetchone()
 
     if still_approved is None:
@@ -281,11 +342,16 @@ def gallery_photo_download(
             WHERE p.id = ?
               AND p.event_id = ?
               AND p.status = 'available'
+              AND (p.gallery_approved = 1 OR ? = 1)
               AND p.s3_bucket = 'tam-smart-event-photos'
               AND p.s3_key IS NOT NULL
               AND p.s3_key != ''
             """,
-            (photo_id, event_id),
+            (
+                photo_id,
+                event_id,
+                int(viewer.get("type") == "contributor"),
+            ),
         ).fetchone()
 
     if photo is None:
@@ -317,8 +383,13 @@ def gallery_photo_download(
                 WHERE id = ?
                   AND event_id = ?
                   AND status = 'available'
+              AND (gallery_approved = 1 OR ? = 1)
                 """,
-                (photo_id, event_id),
+                (
+                photo_id,
+                event_id,
+                int(viewer.get("type") == "contributor"),
+            ),
             ).fetchone()
 
             if approved is None:
@@ -362,7 +433,7 @@ def register_gallery_guest(
     request: __import__("fastapi").Request,
     attendee_name: str = __import__("fastapi").Form(...),
     attendee_mobile: str = __import__("fastapi").Form(...),
-    gallery_access_code: str = __import__("fastapi").Form(...),
+    gallery_access_code: str = __import__("fastapi").Form(""),
     gallery_acknowledged: bool = __import__("fastapi").Form(False),
 ):
     """
@@ -437,24 +508,60 @@ def register_gallery_guest(
     with sqlite3.connect(DB_PATH, timeout=10) as connection:
         event = connection.execute(
             """
-            SELECT gallery_access_code_hash
+            SELECT gallery_access_code_hash, gallery_code_required
             FROM events
             WHERE event_id = ?
             """,
             (event_id,),
         ).fetchone()
 
-    if event is None or not event[0]:
-        raise HTTPException(403, "Gallery access code not configured")
+    if event is None:
+        raise HTTPException(403, "Event unavailable")
+    if event[1] and not verify_gallery_access_code(gallery_access_code, event[0]):
+        raise HTTPException(403, "Invalid or unconfigured gallery access code")
 
-    if not verify_gallery_access_code(
-        gallery_access_code,
-        event[0],
-    ):
-        raise HTTPException(403, "Invalid gallery access code")
+    # TAM-ATTENDEE-GALLERY-CONSENT-DB-V1
+    # Keep gallery session creation and consent recording together.
+    consent_version = '2026-11-gallery-v2'
+
+    consent_text = "TAM collects my name and mobile number to register me for the event photo gallery.\n\nApproved event photographs may include me and other attendees. Registered gallery users may view and download available event photographs.\n\nTAM may record my gallery registration details, downloaded photograph or media ID, and download date and time for event administration and accountability.\n\nI will respect the privacy of other people and will not misuse downloaded photographs or share them inappropriately.\n\nTAM uses AWS cloud services to store event media. Event photographs and registration information are handled according to TAM's applicable retention and deletion practices.\n\nI may contact TAM through its official communication channels with privacy questions or to request review or removal of a photograph.\n\nGallery registration does not authorize facial recognition or selfie matching. These features require separate, optional consent.\n\nI have read and accept this gallery privacy and photo-sharing agreement."
 
     # Do not overwrite an existing session unless registration succeeds.
     with sqlite3.connect(DB_PATH, timeout=10) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        latest = connection.execute("SELECT gallery_access_code_hash, gallery_code_required, gallery_enabled FROM events WHERE event_id = ?", (event_id,)).fetchone()
+        if latest is None or not latest[2] or tuple(latest[:2]) != tuple(event):
+            raise HTTPException(403, "Gallery settings changed; reload and try again")
+        connection.execute(
+            """
+            INSERT INTO attendee_consents (
+                event_id,
+                attendee_name,
+                attendee_mobile,
+                consent_type,
+                consent_version,
+                consent_text,
+                accepted_at,
+                created_at
+            )
+            VALUES (
+                ?, ?, ?, 'gallery_access', ?, ?,
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            )
+            """,
+            (
+                event_id,
+                name,
+                mobile,
+                consent_version,
+                consent_text,
+            ),
+        )
+
+        # TAM-ATOMIC-ATTENDEE-GALLERY-CONSENT-V1
+        # Create the gallery session only after consent is recorded.
+        # The existing helper commits both INSERTs together.
         token = create_gallery_session(
             connection,
             event_id,
@@ -475,7 +582,7 @@ def register_gallery_guest(
         httponly=True,
         secure=True,
         samesite="lax",
-        path="/api/gallery",
+        path="/",
     )
 
     return response
@@ -532,3 +639,183 @@ def get_gallery_viewer(request, db_path: str, event_id: str):
         "id": attendee["token_hash"],
         "name": attendee["attendee_name"],
     }
+
+
+# TAM-CONTRIBUTOR-PERMANENT-DELETE-V1
+
+@router.post(
+    "/api/gallery/photos/{photo_id}/permanent-delete"
+)
+def contributor_permanently_delete_photo(
+    photo_id: int,
+    request: __import__("fastapi").Request,
+):
+    """
+    Permanently delete one photograph owned by
+    the authenticated, approved Contributor.
+
+    Attendees and other Contributors are not authorized.
+
+    Disabled until the full workflow passes testing.
+    """
+
+    import os
+    import secrets
+
+    from fastapi import HTTPException
+    from fastapi.responses import JSONResponse
+    from database import DB_PATH
+
+    from photo_deletion_service import (
+        begin_photo_deletion,
+        process_photo_deletion,
+        PhotoDeletionError,
+    )
+
+    event_id = "tam-diwali-2026"
+
+    # Identify the authenticated gallery viewer.
+    viewer = get_gallery_viewer(
+        request,
+        DB_PATH,
+        event_id,
+    )
+
+    if viewer is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Valid Contributor session required",
+        )
+
+    if viewer.get("type") != "contributor":
+        raise HTTPException(
+            status_code=403,
+            detail="Attendees cannot delete photographs",
+        )
+
+    try:
+        contributor_id = int(viewer["id"])
+    except (ValueError, TypeError, KeyError):
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid Contributor identity",
+        )
+
+    if contributor_id <= 0 or photo_id <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid photograph or Contributor ID",
+        )
+
+    # Require the session-bound CSRF token.
+    expected_csrf = request.session.get(
+        "tam_photo_delete_csrf"
+    )
+
+    supplied_csrf = request.headers.get(
+        "X-TAM-Delete-CSRF",
+        ""
+    )
+
+    if (
+        not isinstance(expected_csrf, str)
+        or not expected_csrf
+        or not secrets.compare_digest(
+            expected_csrf,
+            supplied_csrf,
+        )
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid deletion security token",
+        )
+
+    # Require deliberate confirmation.
+    if request.headers.get(
+        "X-TAM-Delete-Confirmation"
+    ) != "DELETE":
+        raise HTTPException(
+            status_code=400,
+            detail="Explicit DELETE confirmation required",
+        )
+
+    # Disabled by default until production testing.
+    if os.getenv(
+        "TAM_PERMANENT_PHOTO_DELETE_ENABLED", "0"
+    ) != "1":
+        raise HTTPException(
+            status_code=503,
+            detail="Permanent deletion is not yet enabled",
+        )
+
+    # Prepare the AWS clients before recording the request.
+    from aws_config import get_tam_s3_client
+    from rekognition_service import (
+        get_tam_rekognition_client,
+    )
+
+    try:
+        s3_client = get_tam_s3_client()
+        rekognition_client = (
+            get_tam_rekognition_client()
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="AWS deletion services unavailable",
+        )
+
+    # Shared server-side ownership verification.
+    try:
+        begin_photo_deletion(
+            DB_PATH,
+            photo_id,
+            event_id,
+            "contributor",
+            contributor_id,
+            "View Event Photos",
+        )
+
+    except PhotoDeletionError:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "You cannot delete this photograph, "
+                "or it is no longer available."
+            ),
+        )
+
+    # Same AWS cleanup service used by Admins.
+    try:
+        result = process_photo_deletion(
+            DB_PATH,
+            photo_id,
+            s3_client,
+            rekognition_client,
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Photograph hidden, but permanent deletion "
+                "is incomplete and requires review."
+            ),
+        )
+
+    return JSONResponse(
+        {
+            "status": result["status"],
+            "photo_id": photo_id,
+            "deleted": True,
+            "message": "Photograph permanently deleted.",
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+# TAM-CONTRIBUTOR-GALLERY-VISIBILITY-V2
+# Active authenticated contributors may browse available photos.
+# Attendees remain restricted to gallery-approved photographs.
+# Deleted photographs remain excluded.
+# Existing gallery authorization remains mandatory.

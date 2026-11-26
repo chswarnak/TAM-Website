@@ -273,10 +273,43 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
     font-weight: bold;
 }
 
+/* TAM-CAMERA-UPLOAD-CONFIRMATION-V1 */
 #message {
     line-height: 1.6;
     font-weight: bold;
     color: #73356a;
+}
+
+#message.tam-uploading,
+#message.tam-upload-success,
+#message.tam-upload-error {
+    display: block;
+    padding: 16px;
+    margin: 18px auto;
+    border-radius: 14px;
+    border: 2px solid;
+    font-size: 17px;
+    text-align: center;
+    max-width: 440px;
+    box-sizing: border-box;
+}
+
+#message.tam-uploading {
+    background: #fff6d8;
+    color: #765000;
+    border-color: #e1b74d;
+}
+
+#message.tam-upload-success {
+    background: #e5f8e9;
+    color: #176536;
+    border-color: #69ba7b;
+}
+
+#message.tam-upload-error {
+    background: #fff0f0;
+    color: #a02020;
+    border-color: #e5a0a0;
 }
 
 #webcamPanel {
@@ -426,7 +459,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             Every smile deserves to be remembered!
             Tap the camera button, capture your favorite
             Diwali moments, and share them with the TAM community.
-            <br><strong>Your photo uploads automatically after capture.</strong>
+            <br><strong>Review your photo before sharing it.</strong>
         </p>
 
 
@@ -475,6 +508,282 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 <p id="message" role="status" aria-live="polite"></p>
 </div>
 
+
+<!-- TAM-CAMERA-PREVIEW-V2 -->
+
+<style>
+#tamPhotoConfirmation[hidden] {
+    display: none !important;
+}
+
+#tamPhotoConfirmation {
+    position: fixed !important;
+    inset: 0;
+    z-index: 99999;
+    background: #111;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+#tamPreviewImage {
+    display: block;
+    width: 100%;
+    max-width: 1000px;
+    height: 62vh;
+    object-fit: contain;
+    background: #080808;
+    border-radius: 12px;
+}
+
+#tamPhotoConfirmation h2 {
+    color: #f3c76c !important;
+    margin: 8px 0 14px;
+}
+
+.tam-confirm-actions {
+    display: flex;
+    justify-content: center;
+    gap: 45px;
+    width: 100%;
+    margin-top: 12px;
+}
+
+#tamDiscardPhoto,
+#tamConfirmPhoto {
+    width: 76px;
+    height: 76px;
+    border-radius: 50% !important;
+    font-size: 38px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: white !important;
+    box-shadow: 0 4px 15px #0005;
+}
+
+#tamDiscardPhoto {
+    background: #c62828 !important;
+    border: 2px solid #ff8585 !important;
+}
+
+#tamConfirmPhoto {
+    background: #16843d !important;
+    border: 2px solid #8ce6a8 !important;
+}
+
+.tam-confirm-action {
+    text-align: center;
+    font-size: 15px;
+    color: white;
+}
+
+.tam-confirm-action span {
+    display: block;
+    margin-top: 7px;
+}
+
+#tamPreviewMessage {
+    color: #fff;
+    min-height: 22px;
+    text-align: center;
+    margin: 12px 0 0;
+}
+
+#tamPreviewProgress {
+    width: 85%;
+    max-width: 420px;
+    margin-top: 12px;
+    accent-color: #25b45b;
+}
+
+</style>
+
+
+<!-- TAM-PHOTO-UPLOAD-SUCCESS-V1 -->
+
+<style>
+
+#tamPhotoUploadSuccess[hidden] {
+    display: none !important;
+}
+
+#tamPhotoUploadSuccess {
+    position: fixed !important;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.50);
+    padding: 20px;
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
+.tam-photo-success-card {
+    background: #ffffff;
+    border: 3px solid #26954c;
+    border-radius: 22px;
+    padding: 28px 20px;
+    width: 340px;
+    max-width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+    box-shadow: 0 12px 45px rgba(0,0,0,.25);
+}
+
+.tam-photo-success-icon {
+    width: 85px;
+    height: 85px;
+    border-radius: 50%;
+    background: #198c42;
+    color: white;
+    font-size: 52px;
+    margin: 0 auto 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tam-photo-success-card h2 {
+    color: #18783a !important;
+    font-size: 23px;
+    margin: 10px 0;
+}
+
+.tam-photo-success-card p {
+    color: #475569;
+    font-size: 16px;
+    margin: 10px 0;
+}
+
+</style>
+
+<div id="tamPhotoUploadSuccess" hidden
+     role="status" aria-live="polite">
+
+    <div class="tam-photo-success-card">
+
+        <div class="tam-photo-success-icon"
+             aria-hidden="true">
+            ✓
+        </div>
+
+        <h2>Photo Uploaded Successfully!</h2>
+
+        <p>Your photo has been saved.</p>
+
+        <p>You can now take another photo.</p>
+
+    </div>
+
+</div>
+
+<div id="tamPhotoConfirmation"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="tamPreviewTitle"
+     hidden>
+
+    <h2 id="tamPreviewTitle">
+        Review Your Photo
+    </h2>
+
+    <img id="tamPreviewImage"
+         alt="Captured photograph preview">
+
+    <div class="tam-confirm-actions">
+
+        <div class="tam-confirm-action">
+            <button id="tamDiscardPhoto"
+                    type="button"
+                    aria-label="Discard photo">
+                ✕
+            </button>
+            <span>Discard</span>
+        </div>
+
+        <div class="tam-confirm-action">
+            <button id="tamConfirmPhoto"
+                    type="button"
+                    aria-label="Confirm and upload photo">
+                ✓
+            </button>
+            <span>Upload</span>
+        </div>
+
+    </div>
+
+    <p id="tamPreviewMessage"
+       role="status"
+       aria-live="polite">
+        Upload only if you are happy with this photo.
+    </p>
+
+    <progress id="tamPreviewProgress"
+              aria-label="Photo upload in progress"
+              hidden></progress>
+
+</div>
+
+
+<!-- TAM-LIVE-TV-CONSENT-V1 -->
+
+<div style="
+    max-width:620px;
+    margin:15px auto;
+    padding:15px;
+    border:1px solid #c49b45;
+    border-radius:14px;
+    background:#fff8e8;
+    color:#421d42;
+    text-align:left;
+    box-sizing:border-box;
+">
+
+    <label style="
+        display:flex;
+        align-items:flex-start;
+        gap:12px;
+        cursor:pointer;
+    ">
+
+        <input type="checkbox"
+               id="tamLiveTvConsent"
+               style="
+                   width:22px;
+                   height:22px;
+                   flex-shrink:0;
+               ">
+
+        <span>
+
+            <strong>
+                📺 Share on Live TV / Projector
+            </strong>
+
+            <br>
+
+            <small>
+                I confirm that this photograph is suitable
+                and authorized for public display at the
+                TAM event.
+            </small>
+
+        </span>
+
+    </label>
+
+</div>
+
 <script>
 (() => {
     const input = document.getElementById("nativeEventPhoto");
@@ -487,10 +796,126 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
     let uploading = false;
     let pendingPhoto = null;
 
+
+    let tamSuccessPopupTimer = null;
+
+    function showPhotoUploadSuccess() {
+
+        const popup = document.getElementById(
+            "tamPhotoUploadSuccess"
+        );
+
+        if (!popup) return;
+
+        clearTimeout(tamSuccessPopupTimer);
+
+        popup.hidden = false;
+
+        tamSuccessPopupTimer = setTimeout(() => {
+            popup.hidden = true;
+        }, 3000);
+    }
+
+    let previewObjectUrl = null;
+    let photoConfirmed = false;
+    let previewReady = false;
+
+    const confirmation = document.getElementById(
+        "tamPhotoConfirmation"
+    );
+    const previewImage = document.getElementById(
+        "tamPreviewImage"
+    );
+    const discardPhoto = document.getElementById(
+        "tamDiscardPhoto"
+    );
+    const confirmPhoto = document.getElementById(
+        "tamConfirmPhoto"
+    );
+    const previewMessage = document.getElementById(
+        "tamPreviewMessage"
+    );
+    const previewProgress = document.getElementById(
+        "tamPreviewProgress"
+    );
+
+    function clearPhotoPreview() {
+
+        confirmation.hidden = true;
+        previewImage.removeAttribute("src");
+
+        if (previewObjectUrl) {
+            URL.revokeObjectURL(previewObjectUrl);
+            previewObjectUrl = null;
+        }
+
+        photoConfirmed = false;
+        previewReady = false;
+    }
+
+    function showPhotoConfirmation(photo) {
+
+        clearPhotoPreview();
+
+        pendingPhoto = photo;
+        previewObjectUrl = URL.createObjectURL(photo);
+
+        previewImage.onload = () => {
+            previewReady = true;
+            previewMessage.textContent =
+                "Upload only if you are happy with this photo.";
+            updateButtons();
+        };
+
+        previewImage.onerror = () => {
+            previewReady = false;
+            previewMessage.textContent =
+                "Unable to preview this photo. Please discard it.";
+            updateButtons();
+        };
+
+        previewMessage.textContent = "Preparing preview...";
+        confirmation.hidden = false;
+        previewImage.src = previewObjectUrl;
+
+        updateButtons();
+    }
+
+    discardPhoto.addEventListener("click", () => {
+
+        if (uploading) return;
+
+        pendingPhoto = null;
+        clearPhotoPreview();
+
+        message.className = "";
+        message.textContent = "Photo discarded. Take another photo.";
+
+        updateButtons();
+    });
+
+    confirmPhoto.addEventListener("click", () => {
+
+        if (!pendingPhoto || uploading ||
+            !uploadsOpen || !previewReady) return;
+
+        photoConfirmed = true;
+        uploadPhoto();
+    });
+
+
     function updateButtons() {
         takeButton.disabled = uploading || !uploadsOpen || pendingPhoto !== null;
-        retryButton.hidden = pendingPhoto === null;
-        retryButton.disabled = uploading || !uploadsOpen;
+        retryButton.hidden = true;
+        retryButton.disabled = true;
+
+        discardPhoto.disabled = uploading;
+
+        confirmPhoto.disabled =
+            uploading || !uploadsOpen ||
+            !pendingPhoto || !previewReady;
+
+        previewProgress.hidden = !uploading;
     }
 
     async function checkUploadStatus() {
@@ -517,14 +942,30 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
     }
 
     async function uploadPhoto() {
-        if (!pendingPhoto || uploading || !uploadsOpen) return;
+        if (!pendingPhoto || uploading ||
+            !uploadsOpen || !photoConfirmed ||
+            !previewReady) return;
 
         uploading = true;
         updateButtons();
-        message.textContent = "📤 Saving your Diwali memory to the TAM gallery…";
+        message.className = "tam-uploading";
+        message.textContent = "⏳ Uploading Photo... Please wait.";
+        previewMessage.textContent =
+            "Uploading photo. Please wait...";
 
         const formData = new FormData();
         formData.append("file", pendingPhoto, pendingPhoto.name || "event-photo.jpg");
+
+        // TAM-LIVE-TV-CONSENT-V1
+
+        const projectionConsent =
+            document.getElementById("tamLiveTvConsent");
+
+        formData.append(
+            "tam_live_tv",
+            projectionConsent && projectionConsent.checked
+                ? "yes" : "no"
+        );
         formData.append(
             "demo_face_index",
             document.getElementById("demoFaceIndex").checked
@@ -540,21 +981,34 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 
             if (!response.ok) {
                 const result = await response.json().catch(() => null);
+                message.className = "tam-upload-error";
                 message.textContent = typeof result?.detail === "string"
                     ? result.detail
                     : `Photo upload failed (HTTP ${response.status}).`;
 
+                previewMessage.textContent = message.textContent;
+                photoConfirmed = false;
+
                 if ([400, 413, 415, 422].includes(response.status)) {
-                    pendingPhoto = null;
+                    previewReady = false;
+                    previewMessage.textContent +=
+                        " Please discard this photo and try another.";
                 }
                 return;
             }
 
             pendingPhoto = null;
-            message.textContent = "🎉 Your Diwali memory has been shared successfully!";
+            clearPhotoPreview();
+            showPhotoUploadSuccess();
+            message.className = "tam-upload-success";
+            message.textContent = "✅ Photo Uploaded Successfully! Saved to the TAM event gallery.";
             sparkleBurst(takeButton, true);
         } catch {
-            message.textContent = "Connection interrupted. Check your uploads before retrying.";
+            message.className = "tam-upload-error";
+            message.textContent =
+                "❌ Connection interrupted. Check your uploads before retrying.";
+            previewMessage.textContent = message.textContent;
+            photoConfirmed = false;
         } finally {
             uploading = false;
             updateButtons();
@@ -756,14 +1210,7 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
             );
 
             stopWebcam();
-            updateButtons();
-
-            if (uploadsOpen) {
-                uploadPhoto();
-            } else {
-                message.textContent =
-                    "Uploads are unavailable. Retry when they reopen.";
-            }
+            showPhotoConfirmation(pendingPhoto);
         }, "image/jpeg", .9);
     });
 
@@ -773,20 +1220,14 @@ linear-gradient(150deg,#fff8ed,#ffecd7) !important;
 
     window.addEventListener("pagehide", stopWebcam);
 
-    retryButton.addEventListener("click", uploadPhoto);
+    // Uploads require explicit preview confirmation.
 
     input.addEventListener("change", () => {
         const photo = input.files[0];
         input.value = "";
         if (!photo) return;
 
-        pendingPhoto = photo;
-        updateButtons();
-        if (uploadsOpen) {
-            uploadPhoto();
-        } else {
-            message.textContent = "Uploads are closed. Retry when they reopen.";
-        }
+        showPhotoConfirmation(photo);
     });
 
     checkUploadStatus();

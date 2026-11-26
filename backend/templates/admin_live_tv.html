@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1">
+
+<meta name="robots" content="noindex, nofollow">
+
+<title>TAM Live TV Host Controls</title>
+
+<link rel="stylesheet"
+      href="/static/tam-tv/theme.css">
+
+<style>
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    padding: 20px;
+    min-height: 100vh;
+    background: linear-gradient(145deg, #24112e, #491a38);
+    color: #fff6e5;
+    font-family: Nunito, Arial, sans-serif;
+}
+
+main {
+    max-width: 1100px;
+    margin: auto;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+h1 { color: #f8d880; }
+
+.panel {
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid #cda353;
+    border-radius: 18px;
+    background: rgba(255,255,255,.06);
+}
+
+.controls {
+    display: grid;
+    grid-template-columns: repeat(
+        auto-fit, minmax(145px, 1fr)
+    );
+    gap: 12px;
+}
+
+button, .action-link {
+    display: block;
+    padding: 15px 12px;
+    min-height: 50px;
+    border-radius: 10px;
+    border: 1px solid #d1a64d;
+    background: #63334f;
+    color: white;
+    font: inherit;
+    font-weight: bold;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+button:hover, .action-link:hover {
+    filter: brightness(1.15);
+}
+
+button:disabled {
+    opacity: .5;
+    cursor: wait;
+}
+
+button.selected {
+    background: #d9b45d;
+    color: #24112e;
+}
+
+.start { background: #197548; }
+.stop { background: #a52229; }
+.black { background: #000; }
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(
+        auto-fit, minmax(100px, 1fr)
+    );
+    gap: 12px;
+}
+
+.stat {
+    padding: 15px 8px;
+    text-align: center;
+    border-radius: 10px;
+    background: rgba(0,0,0,.25);
+}
+
+.stat strong {
+    display: block;
+    font-size: 30px;
+    color: #f8d880;
+}
+
+.setting {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 0;
+    border-bottom: 1px solid #ffffff22;
+}
+
+.setting input {
+    width: 24px;
+    height: 24px;
+    accent-color: #d9b45d;
+}
+
+#tv-status {
+    display: inline-block;
+    padding: 10px 20px;
+    border-radius: 25px;
+    background: #a52229;
+    color: white;
+}
+
+#tv-status.online {
+    background: #197548;
+}
+
+#tv-message {
+    min-height: 24px;
+    color: #f8d880;
+    text-align: center;
+}
+
+.note {
+    opacity: .8;
+    font-size: 14px;
+}
+
+@media (max-width: 480px) {
+    body { padding: 10px; }
+    .panel { padding: 15px; }
+    .controls {
+        grid-template-columns: repeat(2, minmax(0,1fr));
+    }
+}
+
+</style>
+</head>
+
+<body>
+<main>
+
+<header>
+
+    <p>🪔 Telugu Association of Montreal 🪔</p>
+
+    <h1>Live TV / Projector Controls</h1>
+
+    <span id="tv-status">Connecting...</span>
+
+    <p id="tv-message" role="status"></p>
+
+</header>
+
+<input type="hidden"
+       id="tv-csrf"
+       value="{{ csrf_token }}">
+
+<section class="panel">
+
+    <h2>Projection Controls</h2>
+
+    <div class="controls">
+
+        <button class="start"
+                data-setting="enabled"
+                data-value="1">
+            ▶ Start Live TV
+        </button>
+
+        <button class="stop"
+                data-setting="enabled"
+                data-value="0">
+            ■ Stop Live TV
+        </button>
+
+        <a class="action-link"
+           href="/tv"
+           target="_blank"
+           rel="noopener">
+            📺 Open Projector
+        </a>
+
+    </div>
+
+</section>
+
+<section class="panel">
+
+    <h2>Display Mode</h2>
+
+    <div class="controls">
+
+        <button data-mode="auto">
+            🔄 Automatic
+        </button>
+
+        <button data-mode="slideshow">
+            🖼 Slideshow
+        </button>
+
+        <button data-mode="photo_wall">
+            ▦ Photo Wall
+        </button>
+
+        
+
+        <button data-mode="paused">
+            ⏸ Pause
+        </button>
+
+        <button class="black" data-mode="blank">
+            ⬛ Black Screen
+        </button>
+
+    </div>
+
+</section>
+
+<section class="panel">
+
+    <h2>Display Settings</h2>
+
+    <label class="setting">
+        Ken Burns Animation
+        <input type="checkbox"
+               data-toggle="ken_burns_enabled">
+    </label>
+
+    <label class="setting">
+        Automatic Screen Cycling
+        <input type="checkbox"
+               data-toggle="auto_cycle_enabled">
+    </label>
+
+    
+
+    <p class="note">
+        Maximum four photographs per batch.
+        Ten seconds per new photograph batch.
+    </p>
+
+</section>
+
+<section class="panel">
+
+    <h2>Live Photo Queue</h2>
+
+    <div class="stats">
+
+        <div class="stat">
+            <strong id="count-pending">0</strong>
+            Pending
+        </div>
+
+        <div class="stat">
+            <strong id="count-ready">0</strong>
+            Ready
+        </div>
+
+        <div class="stat">
+            <strong id="count-displaying">0</strong>
+            Displaying
+        </div>
+
+        <div class="stat">
+            <strong id="count-displayed">0</strong>
+            Displayed
+        </div>
+
+        <div class="stat">
+            <strong id="count-rejected">0</strong>
+            Rejected
+        </div>
+
+        <div class="stat">
+            <strong id="count-skipped">0</strong>
+            Skipped
+        </div>
+
+    </div>
+
+</section>
+
+<a class="action-link" href="/admin/dashboard">
+    ← Return to Admin Dashboard
+</a>
+
+</main>
+
+<script src="/static/tam-tv/host-controls.js"
+        defer></script>
+
+</body>
+</html>

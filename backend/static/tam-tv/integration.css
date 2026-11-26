@@ -1,0 +1,219 @@
+
+/* TAM Live TV integration overrides */
+
+html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+}
+
+body {
+    background: #140c23;
+    color: #fff6e5;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+#tam-tv-stage {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+}
+
+#tam-tv-stage .mode {
+    position: absolute;
+    inset: 0;
+    display: none;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: none;
+}
+
+#tam-tv-stage .mode.is-active {
+    display: block;
+}
+
+#tam-tv-stage .mode-slideshow .slide-box {
+    top: 7vh;
+    bottom: 5vh;
+    left: 2vw;
+    right: 2vw;
+}
+
+#tam-tv-stage .slide-img {
+    object-fit: contain;
+}
+
+#tam-tv-stage .slide-layer:not(.is-active) .slide-img {
+    animation: none;
+}
+
+#tam-tv-stage .slide-strip {
+    display: none;
+}
+
+#tam-tv-stage .slide-caption {
+    display: none;
+}
+
+#tam-tv-stage .wall-wrap {
+    position: absolute;
+    inset: 8vh 2vw 4vh;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#tam-tv-stage .wall-wrap .mode-head {
+    display: none;
+}
+
+#wall-grid {
+    display: grid;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    height: 100%;
+    gap: 12px;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+}
+
+#wall-grid[data-count="2"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#wall-grid[data-count="3"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+#wall-grid[data-count="3"] .tam-tv-photo:first-child {
+    grid-row: span 2;
+}
+
+#wall-grid[data-count="4"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.tam-tv-photo {
+    position: relative;
+    margin: 0;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 14px;
+    background: #100b18;
+    border: 1px solid #d9b45d66;
+}
+
+.tam-tv-photo img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+#tam-tv-heading {
+    position: fixed;
+    top: 1vh;
+    left: 2vw;
+    right: 2vw;
+    z-index: 20;
+    color: #f8d880;
+    text-align: center;
+    font-size: clamp(20px, 3vh, 48px);
+    pointer-events: none;
+}
+
+.tam-tv-welcome {
+    display: grid;
+    place-content: center;
+    text-align: center;
+    width: 100%;
+    height: 100%;
+    padding: 3vw;
+    box-sizing: border-box;
+}
+
+.tam-tv-welcome h1 {
+    font-size: clamp(36px, 8vw, 110px);
+    color: #f8d880;
+    margin: 0;
+}
+
+.tam-tv-welcome p {
+    font-size: clamp(18px, 2.5vw, 36px);
+}
+
+#tam-tv-qr {
+    position: fixed;
+    bottom: 2vh;
+    right: 2vw;
+    width: clamp(100px, 11vh, 180px);
+    z-index: 30;
+    background: white;
+    padding: 9px;
+    border-radius: 12px;
+    color: #34152e;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+#tam-tv-qr svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+#tam-tv-qr-label {
+    font-size: 12px;
+    font-weight: bold;
+    margin-top: 5px;
+}
+
+#tam-tv-fullscreen {
+    position: fixed;
+    left: 15px;
+    bottom: 15px;
+    z-index: 40;
+    padding: 10px 16px;
+    border: 1px solid #f8d880;
+    border-radius: 8px;
+    background: #251637;
+    color: white;
+    cursor: pointer;
+}
+
+:fullscreen #tam-tv-fullscreen {
+    opacity: 0;
+}
+
+:fullscreen #tam-tv-fullscreen:hover,
+:fullscreen #tam-tv-fullscreen:focus {
+    opacity: 1;
+}
+
+body.tv-blank #tam-tv-heading,
+body.tv-blank #tam-tv-qr {
+    display: none;
+}
+
+body.tv-blank {
+    background: black;
+}
+
+body.tv-no-kenburns .slide-img {
+    animation: none !important;
+    transform: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .slide-img {
+        animation: none !important;
+    }
+}

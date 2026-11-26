@@ -230,7 +230,7 @@
         <h2>Gallery Controls</h2>
 
         <p class="notice">
-            Gallery activation requires a configured access code.
+            Gallery security settings are managed in Manage Events. A code is needed only if required.
             Enabling the gallery does not automatically approve
             photographs.
         </p>
@@ -243,9 +243,7 @@
             Disable Gallery
         </button>
 
-        <button class="primary" disabled>
-            Configure Access Code
-        </button>
+        <a href="/admin/events">Configure Gallery Access Code in Manage Events</a>
 
         <p class="muted">
             Controls will be connected after the interface is verified.
@@ -325,9 +323,8 @@ async function loadGalleryStatus() {
             Number(data.approved_photos || 0).toLocaleString();
 
         accessCodeStatus.textContent =
-            data.access_code_configured
-                ? "Configured"
-                : "Not configured";
+            !data.gallery_code_required ? "Not required" :
+            (data.access_code_configured ? "Configured" : "Not configured");
 
     } catch (error) {
         console.error("Unable to load gallery status.");
